@@ -1,4 +1,6 @@
-# Setup
+# DAIMPL-MRDT
+
+### Setup
 
 To build the project execute the following command:
 
