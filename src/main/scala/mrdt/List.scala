@@ -5,8 +5,8 @@ import scala.collection.mutable.HashSet
 import scala.collection.immutable.List as ScalaList
 
 class List[A: Ordering](val mem: Set[A], val ordering: HashMap[A, Int])
-    extends Mergeable[List[A]],
-      scala.collection.immutable.Iterable[A] {
+    extends Iterable[A],
+      Mergeable[List[A]] {
   def this() = this(new Set(), new HashMap())
 
   override def size: Int = mem.size
@@ -20,7 +20,7 @@ class List[A: Ordering](val mem: Set[A], val ordering: HashMap[A, Int])
   def add(value: A): Boolean = {
     val inserted = mem.insert(value)
     if (inserted) {
-      ordering.put(value, mem.size)
+      ordering.put(value, mem.size - 1)
     }
     inserted
   }
@@ -35,19 +35,28 @@ class List[A: Ordering](val mem: Set[A], val ordering: HashMap[A, Int])
     mem.insert(value)
   }
 
+  def removeAt(idx: Int): Option[A] = {
+    ordering
+      .find((value, i) => i == idx)
+      .map((value, idx) => {
+        mem.remove(value)
+        ordering.remove(value)
+        ordering.foreach { (value, i) =>
+          if (i >= idx) {
+            ordering.put(value, i - 1)
+          }
+        }
+        value
+      })
+  }
+
   def remove(value: A): Boolean = {
     val idx = this.indexOf(value)
     if (idx.isEmpty) {
       return false
     }
 
-    mem.remove(value)
-    ordering.remove(value)
-    ordering.foreach { (value, i) =>
-      if (i >= idx.get) {
-        ordering.put(value, i - 1)
-      }
-    }
+    removeAt(idx.get)
     true
   }
 

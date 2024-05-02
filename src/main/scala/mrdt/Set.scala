@@ -6,42 +6,40 @@ trait Mergeable[A] {
   def merge(replica1: A, replica2: A): A
 }
 
-class Set[A](val storage: HashSet[A])
-    extends Mergeable[Set[A]],
-      scala.collection.immutable.Iterable[A] {
+class Set[A](val store: HashSet[A]) extends Iterable[A], Mergeable[Set[A]] {
   def this() = this(new HashSet[A]())
 
-  override def size: Int = storage.size
-  override def toSeq: Seq[A] = storage.toSeq
-  def contains(value: A): Boolean = storage.contains(value)
-  def insert(value: A): Boolean = storage.add(value)
-  def remove(value: A): Boolean = storage.remove(value)
+  override def size: Int = store.size
+  override def toSeq: Seq[A] = store.toSeq
+  def contains(value: A): Boolean = store.contains(value)
+  def insert(value: A): Boolean = store.add(value)
+  def remove(value: A): Boolean = store.remove(value)
 
-  override def clone(): Set[A] = new Set[A](storage.clone())
+  override def clone(): Set[A] = new Set[A](store.clone())
 
   override def merge(replica1: Set[A], replica2: Set[A]): Set[A] = {
     val newSet = new Set[A]()
-    for (value <- storage) {
+    for (value <- store) {
       if (replica1.contains(value) && replica2.contains(value)) {
         newSet.insert(value)
       }
     }
-    for (value <- replica1.storage) {
-      if (!storage.contains(value)) {
+    for (value <- replica1.store) {
+      if (!store.contains(value)) {
         newSet.insert(value)
       }
     }
-    for (value <- replica2.storage) {
-      if (!storage.contains(value)) {
+    for (value <- replica2.store) {
+      if (!store.contains(value)) {
         newSet.insert(value)
       }
     }
     newSet
   }
 
-  def asSet: HashSet[A] = this.storage
+  def asSet: HashSet[A] = this.store
 
-  def iterator: Iterator[A] = storage.iterator
+  def iterator: Iterator[A] = store.iterator
 }
 
 object Set {
