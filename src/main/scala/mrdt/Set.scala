@@ -6,6 +6,10 @@ trait Mergeable[A] {
   def merge(replica1: A, replica2: A): A
 }
 
+trait MemMergeable[A, B] {
+  def merge(replica1: A, replica2: A, mergedMem: Set[B]): A
+}
+
 class Set[A](val store: HashSet[A]) extends Iterable[A], Mergeable[Set[A]] {
   def this() = this(new HashSet[A]())
 
