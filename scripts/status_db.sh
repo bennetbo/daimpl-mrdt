@@ -1,1 +1,1 @@
-docker exec -it scylla nodetool status
+docker exec -it mrdt-dev nodetool status
