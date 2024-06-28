@@ -10,3 +10,5 @@ hs_err_pid*
 target
 project/project
 project/metals.sbt
+
+target
