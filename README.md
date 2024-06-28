@@ -1,15 +1,6 @@
 # DAIMPL-MRDT
 
-### Setup
+This repository consists of the following projects:
 
-To build the project execute the following command:
-
-```bash
-sbt compile
-```
-
-To run the tests execute the following command:
-
-```bash
-sbt test
-```
+- scala: A scala implementation of various MRDT data structures
+- rust: A rust implementation of the MRDT data structures and an implementation of the Quark store using scylla-db
