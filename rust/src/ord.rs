@@ -45,7 +45,7 @@ impl<T: MrdtItem> MrdtOrd<T> {
     pub fn insert_in_place(&mut self, ix: usize, value: T) {
         for (_, v) in self.store.iter_mut() {
             if *v >= ix {
-                *v = *v + 1;
+                *v += 1;
             }
         }
         self.store.insert(value, ix);
