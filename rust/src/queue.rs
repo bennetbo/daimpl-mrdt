@@ -73,7 +73,7 @@ impl<T: MrdtItem + Entity> Entity for MrdtQueue<T> {
     }
 }
 
-impl<T: MrdtItem + Entity + Ord> Mergeable<MrdtQueue<T>> for MrdtQueue<T> {
+impl<T: MrdtItem + Ord> Mergeable<MrdtQueue<T>> for MrdtQueue<T> {
     fn merge(lca: &MrdtQueue<T>, left: &MrdtQueue<T>, right: &MrdtQueue<T>) -> MrdtQueue<T> {
         let store = MrdtList::merge(&lca.store, &left.store, &right.store);
         Self { store }

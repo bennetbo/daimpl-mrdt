@@ -67,7 +67,7 @@ impl<T: MrdtItem> MrdtSet<T> {
     }
 }
 
-impl<T: MrdtItem + Entity> Mergeable<MrdtSet<T>> for MrdtSet<T> {
+impl<T: MrdtItem> Mergeable<MrdtSet<T>> for MrdtSet<T> {
     fn merge(lca: &MrdtSet<T>, left: &MrdtSet<T>, right: &MrdtSet<T>) -> MrdtSet<T> {
         merge_sets(lca, left, right)
     }

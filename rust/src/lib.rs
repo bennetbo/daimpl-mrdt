@@ -139,7 +139,7 @@ impl From<Timestamp> for u32 {
 }
 
 #[allow(async_fn_in_trait)]
-pub trait Mergeable<T: Entity> {
+pub trait Mergeable<T> {
     fn merge(lca: &T, left: &T, right: &T) -> T;
 }
 
