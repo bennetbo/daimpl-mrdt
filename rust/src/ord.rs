@@ -42,10 +42,23 @@ impl<T: MrdtItem> MrdtOrd<T> {
         Self { store: modified }
     }
 
+    pub fn insert_in_place(&mut self, ix: usize, value: T) {
+        for (_, v) in self.store.iter_mut() {
+            if *v >= ix {
+                *v = *v + 1;
+            }
+        }
+        self.store.insert(value, ix);
+    }
+
     pub fn remove(&self, value: &T) -> Self {
         let mut modified = self.store.clone();
         modified.remove(value);
         Self { store: modified }
+    }
+
+    pub fn remove_in_place(&mut self, value: &T) {
+        self.store.remove(value);
     }
 
     pub fn remove_at(&self, ix: usize) -> (Self, Option<T>) {
@@ -62,6 +75,25 @@ impl<T: MrdtItem> MrdtOrd<T> {
             }
         }
         (Self { store: modified }, element.map(|(v, _)| v.clone()))
+    }
+
+    pub fn remove_at_in_place(&mut self, ix: usize) -> Option<T> {
+        let element = self
+            .store
+            .iter()
+            .find(|(_, i)| **i == ix)
+            .map(|(k, _)| k.clone());
+        if let Some(element) = element {
+            self.store.remove(&element);
+            for (_, v) in self.store.iter_mut() {
+                if *v > ix {
+                    *v -= 1;
+                }
+            }
+            Some(element)
+        } else {
+            None
+        }
     }
 }
 

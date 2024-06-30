@@ -47,11 +47,23 @@ impl<T: MrdtItem> MrdtQueue<T> {
         Self { store }
     }
 
+    /// Inserts a value into the queue
+    pub fn push_in_place(&mut self, value: T) {
+        self.store.add_in_place(value);
+    }
+
     /// Removes a value from the queue, returning a new queue with the value removed.
     pub fn pop(&self) -> (Self, Option<T>) {
         let element = self.store.iter().next().cloned();
         let store = self.store.remove_at(0);
         (Self { store }, element)
+    }
+
+    /// Removes a value from the queue
+    pub fn pop_in_place(&mut self) -> Option<T> {
+        let element = self.store.iter().next().cloned();
+        self.store.remove_at_in_place(0);
+        element
     }
 }
 

@@ -45,7 +45,16 @@ impl<T: MrdtItem> MrdtList<T> {
 
     /// Inserts a value into the set, returning a new set with the value added.
     pub fn insert(&self, ix: usize, value: T) -> Self {
-        Self::new(self.mem.insert(value.clone()), self.ord.insert(ix, value))
+        Self {
+            mem: self.mem.insert(value.clone()),
+            ord: self.ord.insert(ix, value),
+        }
+    }
+
+    /// Inserts a value into the set
+    pub fn insert_in_place(&mut self, ix: usize, value: T) {
+        self.mem.insert_in_place(value.clone());
+        self.ord.insert_in_place(ix, value);
     }
 
     /// Adds a value to the end of the list, returning a new list with the value added.
@@ -53,9 +62,21 @@ impl<T: MrdtItem> MrdtList<T> {
         let len = self.mem.len();
         let mem = self.mem.insert(value.clone());
         if len != mem.len() {
-            Self::new(mem, self.ord.insert(len, value))
+            Self {
+                mem,
+                ord: self.ord.insert(len, value),
+            }
         } else {
             self.clone()
+        }
+    }
+
+    /// Adds a value to the end of the list
+    pub fn add_in_place(&mut self, value: T) {
+        let len = self.mem.len();
+        self.mem.insert_in_place(value.clone());
+        if len != self.mem.len() {
+            self.ord.insert_in_place(len, value);
         }
     }
 
@@ -69,18 +90,32 @@ impl<T: MrdtItem> MrdtList<T> {
         }
     }
 
+    /// Removes a value from the list
+    pub fn remove_in_place(&mut self, value: &T) {
+        let ix = self.ord.index_of(value);
+        if let Some(ix) = ix {
+            self.remove_at_in_place(ix);
+        }
+    }
+
     /// Removes the element at the specified index, returning a new list with the element removed.
     pub fn remove_at(&self, ix: usize) -> Self {
         let (new_ord, removed) = self.ord.remove_at(ix);
         if let Some(removed) = removed {
-            Self::new(self.mem.remove(&removed), new_ord)
+            Self {
+                mem: self.mem.remove(&removed),
+                ord: new_ord,
+            }
         } else {
             self.clone()
         }
     }
 
-    fn new(mem: MrdtSet<T>, ord: MrdtOrd<T>) -> Self {
-        Self { mem, ord }
+    /// Removes the element at the specified index
+    pub fn remove_at_in_place(&mut self, ix: usize) {
+        if let Some(removed) = self.ord.remove_at_in_place(ix) {
+            self.mem.remove_in_place(&removed);
+        }
     }
 }
 

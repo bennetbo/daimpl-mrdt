@@ -44,16 +44,26 @@ impl<T: MrdtItem> MrdtSet<T> {
 
     /// Inserts a value into the set, returning a new set with the value added.
     pub fn insert(&self, value: T) -> Self {
-        self.modify(self.store.update(value))
+        Self {
+            store: self.store.update(value),
+        }
+    }
+
+    /// Inserts a value into the set
+    pub fn insert_in_place(&mut self, value: T) {
+        self.store.insert(value);
     }
 
     /// Removes a value from the set, returning a new set with the value removed.
     pub fn remove(&self, value: &T) -> Self {
-        self.modify(self.store.without(value))
+        Self {
+            store: self.store.without(value),
+        }
     }
 
-    fn modify(&self, store: im::HashSet<T>) -> Self {
-        Self { store }
+    /// Remove a value into the set
+    pub fn remove_in_place(&mut self, value: &T) {
+        self.store.remove(value);
     }
 }
 
