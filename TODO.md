@@ -1,6 +1,7 @@
 scala:
 - [ ] Use Immutable data structures for MrdtSet, MrdtList, MrdtQueue (see rust implementation for reference)
 - [ ] Write some micro benchmarks to compare the MRDT implementation to the CRDT implementations
+- [ ] How can we speed up the merge function of sets? Use red black trees?
 - [ ] (maybe) add some more MRDT data structures (e.g. MrdtMap, MrdtBinaryTree, MrdtGraph, etc.)
 - [ ] Proper docs
 
