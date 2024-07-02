@@ -671,6 +671,7 @@ dependencies = [
  "fxhash",
  "im",
  "rand",
+ "rb_tree",
  "scylla",
  "serde",
  "serde_json",
@@ -871,6 +872,12 @@ dependencies = [
  "crossbeam-deque",
  "crossbeam-utils",
 ]
+
+[[package]]
+name = "rb_tree"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6724c78e033e1c4155b4d3f76593d09ad384739c6986c1addc2bd2f55b1aefe"
 
 [[package]]
 name = "redox_syscall"

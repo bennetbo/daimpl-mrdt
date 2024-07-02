@@ -1,8 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use rb_tree::RBTree;
 
-fn merge_rbtree(iterations: u64) -> RBTree<u64> {
-    let mut lca = RBTree::new();
+fn merge_rbtree(iterations: u64) -> rb_tree::RBTree<u64> {
+    let mut lca = rb_tree::RBTree::new();
 
     for i in 0..iterations {
         let mut left = lca.clone();
@@ -10,10 +9,10 @@ fn merge_rbtree(iterations: u64) -> RBTree<u64> {
         left.insert(i);
         right.insert(i + 1);
 
-        let s1: RBTree<u64> = left
+        let s1: rb_tree::RBTree<u64> = left
             .intersection(&right)
             .cloned()
-            .collect::<RBTree<_>>()
+            .collect::<rb_tree::RBTree<_>>()
             .intersection(&lca)
             .cloned()
             .collect();
@@ -26,7 +25,7 @@ fn merge_rbtree(iterations: u64) -> RBTree<u64> {
         lca = s1
             .union(&s2)
             .cloned()
-            .collect::<RBTree<_>>()
+            .collect::<rb_tree::RBTree<_>>()
             .union(&s3)
             .cloned()
             .collect();
@@ -35,8 +34,8 @@ fn merge_rbtree(iterations: u64) -> RBTree<u64> {
     lca
 }
 
-fn merge_rbtree_opt(iterations: u64) -> RBTree<u64> {
-    let mut lca = RBTree::new();
+fn merge_rbtree_opt(iterations: u64) -> rb_tree::RBTree<u64> {
+    let mut lca = rb_tree::RBTree::new();
 
     for i in 0..iterations {
         let mut left = lca.clone();
@@ -44,7 +43,7 @@ fn merge_rbtree_opt(iterations: u64) -> RBTree<u64> {
         left.insert(i);
         right.insert(i + 1);
 
-        let mut values: RBTree<u64> = left
+        let mut values: rb_tree::RBTree<u64> = left
             .intersection(&right)
             .filter(|&item| lca.contains(item))
             .cloned()
