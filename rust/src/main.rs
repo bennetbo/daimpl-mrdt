@@ -34,7 +34,8 @@ async fn main() -> Result<()> {
     // TODO: It is unclear how to handle different replicas without a "common" ancestor, we start
     // by manually establishing a base commit
     let main_replica = Id::gen();
-    let base_set = MrdtSet::default().insert(Person::new("Alice", "Johnson", 28));
+    let mut base_set = MrdtSet::default();
+    base_set.insert(Person::new("Alice", "Johnson", 28));
     let base_set_ref = store1.insert(&base_set).await.unwrap();
     let _base_commit = store1
         .commit(main_replica, VectorClock::default(), base_set_ref)
@@ -44,11 +45,11 @@ async fn main() -> Result<()> {
     let mut replica1 = Replica::clone(Id::gen(), store1).await.unwrap();
     let mut replica2 = Replica::clone(Id::gen(), store2).await.unwrap();
 
-    let set1: MrdtSet<Person> = replica1.latest_object().await.unwrap();
-    let set2: MrdtSet<Person> = replica2.latest_object().await.unwrap();
+    let mut set1: MrdtSet<Person> = replica1.latest_object().await.unwrap();
+    let mut set2: MrdtSet<Person> = replica2.latest_object().await.unwrap();
 
-    let set1 = set1.insert(Person::new("Michael", "Smith", 34));
-    let set2 = set2.insert(Person::new("Emma", "Davis", 25));
+    set1.insert(Person::new("Michael", "Smith", 34));
+    set2.insert(Person::new("Emma", "Davis", 25));
 
     replica1.commit_object(&set1).await?;
     replica2.commit_object(&set2).await?;
