@@ -107,13 +107,13 @@ fn ordering_to_hashmap<T: Ord + Clone + std::hash::Hash>(
     use std::collections::BinaryHeap;
 
     // Define auxiliary structures
-    let nodes: im::HashSet<T> = ordering
+    let nodes: fxhash::FxHashSet<T> = ordering
         .iter()
         .flat_map(|(a, b)| vec![a.clone(), b.clone()])
         .collect();
 
-    let mut adjacency_list: im::HashMap<T, Vec<T>> = im::HashMap::new();
-    let mut in_degree: im::HashMap<T, usize> = im::HashMap::new();
+    let mut adjacency_list: fxhash::FxHashMap<T, Vec<T>> = fxhash::FxHashMap::default();
+    let mut in_degree: fxhash::FxHashMap<T, usize> = fxhash::FxHashMap::default();
 
     for (from, to) in ordering {
         adjacency_list

@@ -4,12 +4,12 @@ use super::*;
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VectorClock {
-    timestamps: im::HashMap<Id, Timestamp>,
+    timestamps: fxhash::FxHashMap<Id, Timestamp>,
 }
 
 impl VectorClock {
     pub fn merge(left: &Self, right: &Self) -> Self {
-        let mut timestamps = im::HashMap::new();
+        let mut timestamps = fxhash::FxHashMap::default();
 
         for (id, timestamp) in left.timestamps.iter() {
             timestamps.insert(*id, *timestamp);
@@ -27,7 +27,7 @@ impl VectorClock {
     }
 
     pub fn lca(left: &Self, right: &Self) -> Self {
-        let mut timestamps = im::HashMap::new();
+        let mut timestamps = fxhash::FxHashMap::default();
 
         for (id, timestamp) in left.timestamps.iter() {
             if let Some(other_timestamp) = right.timestamps.get(id) {
@@ -59,19 +59,19 @@ impl VectorClock {
         self.timestamps.get(&id).cloned()
     }
 
-    pub fn inc(&self, id: Id) -> Self {
+    pub fn inc(&mut self, id: Id) {
         let new_time = self.time_of(id).unwrap_or_default().inc();
-        Self {
-            timestamps: self.timestamps.update(id, new_time),
-        }
+        self.timestamps.insert(id, new_time);
     }
 }
 
 impl From<&[(Id, Timestamp)]> for VectorClock {
     fn from(timestamps: &[(Id, Timestamp)]) -> Self {
-        Self {
-            timestamps: im::HashMap::from(timestamps),
+        let mut map = fxhash::FxHashMap::default();
+        for (id, timestamp) in timestamps {
+            map.insert(*id, *timestamp);
         }
+        Self { timestamps: map }
     }
 }
 
@@ -164,8 +164,8 @@ mod tests {
     #[test]
     fn test_inc() {
         let id1 = Id::gen();
-        let vc = VectorClock::from([(id1, Timestamp::from(2))].as_slice());
-        let vc = vc.inc(id1);
+        let mut vc = VectorClock::from([(id1, Timestamp::from(2))].as_slice());
+        vc.inc(id1);
 
         assert_eq!(vc.time_of(id1), Some(Timestamp::from(3)));
     }

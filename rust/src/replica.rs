@@ -81,6 +81,8 @@ impl Replica {
     }
 
     fn next_version(&self) -> VectorClock {
-        self.latest_commit.version.inc(self.id)
+        let mut version = self.latest_commit.version.clone();
+        version.inc(self.id);
+        version
     }
 }
