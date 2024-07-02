@@ -41,28 +41,15 @@ impl<T: MrdtItem> MrdtQueue<T> {
         self.store.index_of(value)
     }
 
-    /// Inserts a value into the queue, returning a new queue with the value added.
-    pub fn push(&self, value: T) -> Self {
-        let store = self.store.add(value);
-        Self { store }
-    }
-
     /// Inserts a value into the queue
-    pub fn push_in_place(&mut self, value: T) {
-        self.store.add_in_place(value);
-    }
-
-    /// Removes a value from the queue, returning a new queue with the value removed.
-    pub fn pop(&self) -> (Self, Option<T>) {
-        let element = self.store.iter().next().cloned();
-        let store = self.store.remove_at(0);
-        (Self { store }, element)
+    pub fn push(&mut self, value: T) {
+        self.store.add(value);
     }
 
     /// Removes a value from the queue
-    pub fn pop_in_place(&mut self) -> Option<T> {
+    pub fn pop(&mut self) -> Option<T> {
         let element = self.store.iter().next().cloned();
-        self.store.remove_at_in_place(0);
+        self.store.remove_at(0);
         element
     }
 }
@@ -79,7 +66,6 @@ impl<T: MrdtItem + Ord> Mergeable<MrdtQueue<T>> for MrdtQueue<T> {
         Self { store }
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -105,7 +91,7 @@ mod tests {
 
     #[test]
     fn test_queue_push() {
-        let queue: MrdtQueue<TestItem> = MrdtQueue::default();
+        let mut queue: MrdtQueue<TestItem> = MrdtQueue::default();
         let item1 = TestItem {
             id: 1,
             value: "Item 1".into(),
@@ -119,19 +105,19 @@ mod tests {
             value: "Item 3".into(),
         };
 
-        let new_queue = queue
-            .push(item1.clone())
-            .push(item2.clone())
-            .push(item3.clone());
-        assert_eq!(new_queue.len(), 3);
-        assert_eq!(new_queue.index_of(&item1), Some(0));
-        assert_eq!(new_queue.index_of(&item2), Some(1));
-        assert_eq!(new_queue.index_of(&item3), Some(2));
+        queue.push(item1.clone());
+        queue.push(item2.clone());
+        queue.push(item3.clone());
+
+        assert_eq!(queue.len(), 3);
+        assert_eq!(queue.index_of(&item1), Some(0));
+        assert_eq!(queue.index_of(&item2), Some(1));
+        assert_eq!(queue.index_of(&item3), Some(2));
     }
 
     #[test]
     fn test_queue_pop() {
-        let queue: MrdtQueue<TestItem> = MrdtQueue::default();
+        let mut queue: MrdtQueue<TestItem> = MrdtQueue::default();
         let item1 = TestItem {
             id: 1,
             value: "Item 1".into(),
@@ -145,21 +131,21 @@ mod tests {
             value: "Item 3".into(),
         };
 
-        let new_queue = queue
-            .push(item1.clone())
-            .push(item2.clone())
-            .push(item3.clone());
-        assert_eq!(new_queue.len(), 3);
-        let (new_queue, popped) = new_queue.pop();
-        assert_eq!(new_queue.len(), 2);
+        queue.push(item1.clone());
+        queue.push(item2.clone());
+        queue.push(item3.clone());
+
+        assert_eq!(queue.len(), 3);
+        let popped = queue.pop();
+        assert_eq!(queue.len(), 2);
         assert_eq!(popped, Some(item1));
-        assert_eq!(new_queue.index_of(&item2), Some(0));
-        assert_eq!(new_queue.index_of(&item3), Some(1));
+        assert_eq!(queue.index_of(&item2), Some(0));
+        assert_eq!(queue.index_of(&item3), Some(1));
     }
 
     #[test]
     fn test_queue_merge() {
-        let queue: MrdtQueue<TestItem> = MrdtQueue::default();
+        let mut lca: MrdtQueue<TestItem> = MrdtQueue::default();
         let item1 = TestItem {
             id: 1,
             value: "Item 1".into(),
@@ -181,15 +167,18 @@ mod tests {
             value: "Item 5".into(),
         };
 
-        let initial_queue = queue
-            .push(item1.clone())
-            .push(item2.clone())
-            .push(item3.clone());
+        lca.push(item1.clone());
+        lca.push(item2.clone());
+        lca.push(item3.clone());
 
-        let replica1 = initial_queue.push(item4.clone());
-        let replica2 = initial_queue.pop().0.push(item5.clone());
+        let mut replica1 = lca.clone();
+        replica1.push(item4.clone());
 
-        let merged_queue = MrdtQueue::merge(&initial_queue, &replica1, &replica2);
+        let mut replica2 = lca.clone();
+        replica2.pop();
+        replica2.push(item5.clone());
+
+        let merged_queue = MrdtQueue::merge(&lca, &replica1, &replica2);
         assert_eq!(merged_queue.len(), 4);
         assert_eq!(merged_queue.index_of(&item2), Some(0));
         assert_eq!(merged_queue.index_of(&item3), Some(1));

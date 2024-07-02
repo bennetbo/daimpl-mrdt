@@ -43,78 +43,33 @@ impl<T: MrdtItem> MrdtList<T> {
         self.ord.index_of(value)
     }
 
-    /// Inserts a value into the set, returning a new set with the value added.
-    pub fn insert(&self, ix: usize, value: T) -> Self {
-        Self {
-            mem: self.mem.insert(value.clone()),
-            ord: self.ord.insert(ix, value),
-        }
-    }
-
     /// Inserts a value into the set
-    pub fn insert_in_place(&mut self, ix: usize, value: T) {
-        self.mem.insert_in_place(value.clone());
-        self.ord.insert_in_place(ix, value);
-    }
-
-    /// Adds a value to the end of the list, returning a new list with the value added.
-    pub fn add(&self, value: T) -> Self {
-        let len = self.mem.len();
-        let mem = self.mem.insert(value.clone());
-        if len != mem.len() {
-            Self {
-                mem,
-                ord: self.ord.insert(len, value),
-            }
-        } else {
-            self.clone()
-        }
+    pub fn insert(&mut self, ix: usize, value: T) {
+        self.mem.insert(value.clone());
+        self.ord.insert(ix, value);
     }
 
     /// Adds a value to the end of the list
-    pub fn add_in_place(&mut self, value: T) {
+    pub fn add(&mut self, value: T) {
         let len = self.mem.len();
-        self.mem.insert_in_place(value.clone());
+        self.mem.insert(value.clone());
         if len != self.mem.len() {
-            self.ord.insert_in_place(len, value);
-        }
-    }
-
-    /// Removes a value from the set, returning a new set with the value removed.
-    pub fn remove(&self, value: &T) -> Self {
-        let ix = self.ord.index_of(value);
-        if let Some(ix) = ix {
-            self.remove_at(ix)
-        } else {
-            self.clone()
+            self.ord.insert(len, value);
         }
     }
 
     /// Removes a value from the list
-    pub fn remove_in_place(&mut self, value: &T) {
+    pub fn remove(&mut self, value: &T) {
         let ix = self.ord.index_of(value);
         if let Some(ix) = ix {
-            self.remove_at_in_place(ix);
-        }
-    }
-
-    /// Removes the element at the specified index, returning a new list with the element removed.
-    pub fn remove_at(&self, ix: usize) -> Self {
-        let (new_ord, removed) = self.ord.remove_at(ix);
-        if let Some(removed) = removed {
-            Self {
-                mem: self.mem.remove(&removed),
-                ord: new_ord,
-            }
-        } else {
-            self.clone()
+            self.remove_at(ix);
         }
     }
 
     /// Removes the element at the specified index
-    pub fn remove_at_in_place(&mut self, ix: usize) {
-        if let Some(removed) = self.ord.remove_at_in_place(ix) {
-            self.mem.remove_in_place(&removed);
+    pub fn remove_at(&mut self, ix: usize) {
+        if let Some(removed) = self.ord.remove_at(ix) {
+            self.mem.remove(&removed);
         }
     }
 }
@@ -140,7 +95,6 @@ impl<T: MrdtItem + Ord> Mergeable<MrdtList<T>> for MrdtList<T> {
         Self { mem, ord }
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -166,7 +120,7 @@ mod tests {
 
     #[test]
     fn test_list_insert() {
-        let list: MrdtList<TestItem> = MrdtList::default();
+        let mut list: MrdtList<TestItem> = MrdtList::default();
         let item1 = TestItem {
             id: 1,
             value: "Item 1".into(),
@@ -184,34 +138,36 @@ mod tests {
             value: "Item 4".into(),
         };
 
-        let new_list = list
-            .add(item1.clone())
-            .add(item2.clone())
-            .add(item3.clone())
-            .insert(0, item4.clone());
-        assert_eq!(new_list.len(), 4);
-        assert_eq!(new_list.index_of(&item4), Some(0));
-        assert_eq!(new_list.index_of(&item1), Some(1));
-        assert_eq!(new_list.index_of(&item2), Some(2));
-        assert_eq!(new_list.index_of(&item3), Some(3));
+        list.add(item1.clone());
+        list.add(item2.clone());
+        list.add(item3.clone());
+        list.insert(0, item4.clone());
+
+        assert_eq!(list.len(), 4);
+        assert_eq!(list.index_of(&item4), Some(0));
+        assert_eq!(list.index_of(&item1), Some(1));
+        assert_eq!(list.index_of(&item2), Some(2));
+        assert_eq!(list.index_of(&item3), Some(3));
     }
 
     #[test]
     fn test_list_insert_duplicate() {
-        let list: MrdtList<TestItem> = MrdtList::default();
+        let mut list: MrdtList<TestItem> = MrdtList::default();
         let item = TestItem {
             id: 1,
             value: "Item 1".into(),
         };
 
-        let new_list = list.insert(0, item.clone()).insert(0, item.clone());
-        assert_eq!(new_list.len(), 1);
-        assert!(new_list.contains(&item));
+        list.insert(0, item.clone());
+        list.insert(0, item.clone());
+
+        assert_eq!(list.len(), 1);
+        assert!(list.contains(&item));
     }
 
     #[test]
     fn test_list_remove() {
-        let list: MrdtList<TestItem> = MrdtList::default();
+        let mut list: MrdtList<TestItem> = MrdtList::default();
         let item1 = TestItem {
             id: 1,
             value: "Item 1".into(),
@@ -225,20 +181,22 @@ mod tests {
             value: "Item 3".into(),
         };
 
-        let new_list = list
-            .add(item1.clone())
-            .add(item2.clone())
-            .add(item3.clone());
-        assert_eq!(new_list.len(), 3);
-        let after_removal = new_list.remove(&item1);
-        assert_eq!(after_removal.len(), 2);
-        assert_eq!(after_removal.index_of(&item2), Some(0));
-        assert_eq!(after_removal.index_of(&item3), Some(1));
+        list.add(item1.clone());
+        list.add(item2.clone());
+        list.add(item3.clone());
+
+        assert_eq!(list.len(), 3);
+
+        list.remove(&item1);
+
+        assert_eq!(list.len(), 2);
+        assert_eq!(list.index_of(&item2), Some(0));
+        assert_eq!(list.index_of(&item3), Some(1));
     }
 
     #[test]
     fn test_list_merge_add() {
-        let list: MrdtList<TestItem> = MrdtList::default();
+        let mut lca: MrdtList<TestItem> = MrdtList::default();
         let item1 = TestItem {
             id: 1,
             value: "Item 1".into(),
@@ -260,15 +218,18 @@ mod tests {
             value: "Item 5".into(),
         };
 
-        let initial_list = list
-            .add(item1.clone())
-            .add(item2.clone())
-            .add(item3.clone());
+        lca.add(item1.clone());
+        lca.add(item2.clone());
+        lca.add(item3.clone());
 
-        let replica1 = initial_list.add(item4.clone());
-        let replica2 = initial_list.remove(&item1).add(item5.clone());
+        let mut replica1 = lca.clone();
+        let mut replica2 = lca.clone();
 
-        let merged_list = MrdtList::merge(&initial_list, &replica1, &replica2);
+        replica1.add(item4.clone());
+        replica2.remove(&item1);
+        replica2.add(item5.clone());
+
+        let merged_list = MrdtList::merge(&lca, &replica1, &replica2);
         assert_eq!(merged_list.len(), 4);
         assert_eq!(merged_list.index_of(&item2), Some(0));
         assert_eq!(merged_list.index_of(&item3), Some(1));
@@ -278,7 +239,7 @@ mod tests {
 
     #[test]
     fn test_list_merge_insert() {
-        let list: MrdtList<TestItem> = MrdtList::default();
+        let mut lca: MrdtList<TestItem> = MrdtList::default();
         let item1 = TestItem {
             id: 1,
             value: "Item 1".into(),
@@ -300,15 +261,18 @@ mod tests {
             value: "Item 5".into(),
         };
 
-        let initial_list = list
-            .add(item1.clone())
-            .add(item2.clone())
-            .add(item3.clone());
+        lca.add(item1.clone());
+        lca.add(item2.clone());
+        lca.add(item3.clone());
 
-        let replica1 = initial_list.clone().insert(0, item4.clone());
-        let replica2 = initial_list.clone().remove(&item1).insert(0, item5.clone());
+        let mut replica1 = lca.clone();
+        let mut replica2 = lca.clone();
 
-        let merged_list = MrdtList::merge(&initial_list, &replica1, &replica2);
+        replica1.insert(0, item4.clone());
+        replica2.remove(&item1);
+        replica2.insert(0, item5.clone());
+
+        let merged_list = MrdtList::merge(&lca, &replica1, &replica2);
         assert_eq!(merged_list.len(), 4);
         assert_eq!(merged_list.index_of(&item4), Some(0));
         assert_eq!(merged_list.index_of(&item5), Some(1));

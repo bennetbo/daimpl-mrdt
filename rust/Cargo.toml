@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.86"
 async-trait = "0.1.80"
+fxhash = "0.2.1"
 im = { version = "15.1.0", features = ["serde"] }
 rand = "0.8.5"
 scylla = "0.13.0"
@@ -15,6 +16,7 @@ tokio = { version = "1.37.0", features = ["full"] }
 
 [dev-dependencies]
 criterion = "0.5.1"
+rb_tree = "0.5.0"
 
 [[bench]]
 name = "collections"
@@ -22,4 +24,8 @@ harness = false
 
 [[bench]]
 name = "merge"
+harness = false
+
+[[bench]]
+name = "merge_base"
 harness = false

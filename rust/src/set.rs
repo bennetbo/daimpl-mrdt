@@ -2,9 +2,18 @@ use super::*;
 use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, hash::Hash};
 
-#[derive(Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MrdtSet<T: MrdtItem> {
-    pub(crate) store: im::HashSet<T>,
+    pub(crate) store: fxhash::FxHashSet<T>,
+}
+
+impl<T: MrdtItem> Hash for MrdtSet<T> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write_u64(self.store.len() as u64);
+        for item in self.store.iter() {
+            item.hash(state);
+        }
+    }
 }
 
 impl<T: MrdtItem> Default for MrdtSet<T> {
@@ -42,27 +51,13 @@ impl<T: MrdtItem> MrdtSet<T> {
         self.store.contains(value)
     }
 
-    /// Inserts a value into the set, returning a new set with the value added.
-    pub fn insert(&self, value: T) -> Self {
-        Self {
-            store: self.store.update(value),
-        }
-    }
-
     /// Inserts a value into the set
-    pub fn insert_in_place(&mut self, value: T) {
+    pub fn insert(&mut self, value: T) {
         self.store.insert(value);
     }
 
-    /// Removes a value from the set, returning a new set with the value removed.
-    pub fn remove(&self, value: &T) -> Self {
-        Self {
-            store: self.store.without(value),
-        }
-    }
-
-    /// Remove a value into the set
-    pub fn remove_in_place(&mut self, value: &T) {
+    /// Remove a value from the set
+    pub fn remove(&mut self, value: &T) {
         self.store.remove(value);
     }
 }
@@ -78,29 +73,17 @@ pub fn merge_sets<T: MrdtItem>(
     left: &MrdtSet<T>,
     right: &MrdtSet<T>,
 ) -> MrdtSet<T> {
-    let mut values = Vec::with_capacity(lca.len());
+    let mut values = lca
+        .store
+        .intersection(&left.store)
+        .filter(|&item| right.store.contains(item))
+        .cloned()
+        .collect::<fxhash::FxHashSet<_>>();
 
-    for value in lca.iter() {
-        if left.contains(value) && right.contains(value) {
-            values.push(value.clone());
-        }
-    }
+    values.extend(left.store.difference(&lca.store).cloned());
+    values.extend(right.store.difference(&lca.store).cloned());
 
-    for value in left.iter() {
-        if !lca.contains(value) {
-            values.push(value.clone());
-        }
-    }
-
-    for value in right.iter() {
-        if !lca.contains(value) {
-            values.push(value.clone());
-        }
-    }
-
-    MrdtSet {
-        store: im::HashSet::from(values),
-    }
+    MrdtSet { store: values }
 }
 
 impl<T: MrdtItem + Entity> Entity for MrdtSet<T> {
@@ -109,8 +92,8 @@ impl<T: MrdtItem + Entity> Entity for MrdtSet<T> {
     }
 }
 
-impl<T: MrdtItem> From<im::HashSet<T>> for MrdtSet<T> {
-    fn from(value: im::HashSet<T>) -> Self {
+impl<T: MrdtItem> From<fxhash::FxHashSet<T>> for MrdtSet<T> {
+    fn from(value: fxhash::FxHashSet<T>) -> Self {
         Self { store: value }
     }
 }
@@ -138,11 +121,11 @@ mod tests {
 
     #[test]
     fn test_insert() {
-        let set = MrdtSet::default();
+        let mut set = MrdtSet::default();
         let id = Id::gen();
         let entity = TestEntity::new(id);
 
-        let set = set.insert(entity.clone());
+        set.insert(entity.clone());
 
         assert_eq!(set.len(), 1);
         assert!(set.contains(&entity));
@@ -150,12 +133,12 @@ mod tests {
 
     #[test]
     fn test_remove() {
-        let set = MrdtSet::default();
+        let mut set = MrdtSet::default();
         let id = Id::gen();
         let entity = TestEntity::new(id);
 
-        let set = set.insert(entity.clone());
-        let set = set.remove(&entity);
+        set.insert(entity.clone());
+        set.remove(&entity);
 
         assert!(set.is_empty());
         assert!(!set.contains(&entity));
@@ -163,27 +146,28 @@ mod tests {
 
     #[test]
     fn test_len_and_is_empty() {
-        let set = MrdtSet::default();
+        let mut set = MrdtSet::default();
         assert!(set.is_empty());
 
         let id = Id::gen();
         let entity = TestEntity::new(id);
 
-        let set = set.insert(entity.clone());
+        set.insert(entity.clone());
+
         assert_eq!(set.len(), 1);
         assert!(!set.is_empty());
     }
 
     #[test]
     fn test_iter() {
-        let set = MrdtSet::default();
+        let mut set = MrdtSet::default();
         let id1 = Id::gen();
         let id2 = Id::gen();
         let entity1 = TestEntity::new(id1);
         let entity2 = TestEntity::new(id2);
 
-        let set = set.insert(entity1.clone());
-        let set = set.insert(entity2.clone());
+        set.insert(entity1.clone());
+        set.insert(entity2.clone());
 
         let mut iter = set.iter();
         let item1 = iter.next().unwrap();
@@ -203,13 +187,16 @@ mod tests {
         let entity2 = TestEntity::new(id2);
         let entity3 = TestEntity::new(id3);
 
-        let set1 = MrdtSet::default()
-            .insert(entity1.clone())
-            .insert(entity2.clone());
-        let set2 = MrdtSet::default()
-            .insert(entity2.clone())
-            .insert(entity3.clone());
-        let lca = MrdtSet::default().insert(entity2.clone());
+        let mut set1 = MrdtSet::default();
+        set1.insert(entity1.clone());
+        set1.insert(entity2.clone());
+
+        let mut set2 = MrdtSet::default();
+        set2.insert(entity2.clone());
+        set2.insert(entity3.clone());
+
+        let mut lca = MrdtSet::default();
+        lca.insert(entity2.clone());
 
         let merged = MrdtSet::merge(&lca, &set1, &set2);
         assert!(merged.contains(&entity1));

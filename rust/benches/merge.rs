@@ -3,29 +3,35 @@ use list::MrdtList;
 use mrdt_rs::*;
 
 fn set_merge(iterations: u64) -> MrdtSet<u64> {
-    let mut base_set = MrdtSet::default();
+    let mut lca = MrdtSet::default();
 
     for i in 0..iterations {
-        let set1 = base_set.insert(i);
-        let set2 = base_set.insert(i + 1);
+        let mut set1 = lca.clone();
+        let mut set2 = lca.clone();
 
-        base_set = MrdtSet::merge(&base_set, &set1, &set2);
+        set1.insert(i);
+        set2.insert(i + 1);
+
+        lca = MrdtSet::merge(&lca, &set1, &set2);
     }
 
-    base_set
+    lca
 }
 
 fn list_merge(iterations: u64) -> MrdtList<u64> {
-    let mut base_list = MrdtList::default();
+    let mut lca = MrdtList::default();
 
     for i in 0..iterations {
-        let list1 = base_list.add(i);
-        let list2 = base_list.add(i + 1);
+        let mut list1 = lca.clone();
+        let mut list2 = lca.clone();
 
-        base_list = MrdtList::merge(&base_list, &list1, &list2);
+        list1.add(i);
+        list2.add(i + 1);
+
+        lca = MrdtList::merge(&lca, &list1, &list2);
     }
 
-    base_list
+    lca
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
