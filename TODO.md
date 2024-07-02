@@ -9,7 +9,6 @@ rust:
 - [ ] Implement diffing for the quark store
   - [ ] Measure storage impact (no-diff, gzip, diff, gzip+diff)
 - [ ] Optimize the mrdt implementation (lots of low hanging fruit, lot's of clones all over the place)
-- [ ] How can we speed up the merge function of sets? Use red black trees?
 - [ ] Add real world example and add some benchmarks for that
 - [ ] Proper docs
 - [ ] (maybe) add some more MRDT data structures (e.g. MrdtMap, MrdtBinaryTree, MrdtGraph, etc.)
