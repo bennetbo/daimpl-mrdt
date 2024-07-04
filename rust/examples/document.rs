@@ -1,9 +1,18 @@
+use fxhash::FxHashMap;
 use list::MrdtList;
 use mrdt_rs::*;
 use musli::{Decode, Encode};
-use std::fmt::Display;
+use rand::Rng;
+use std::{
+    fmt::Display,
+    time::{Duration, Instant},
+};
 
-#[derive(Clone, Decode, Encode, Hash, PartialEq, Eq, Debug)]
+const CYCLES: usize = 100;
+const REPLICAS: usize = 3;
+const CHAR_INSERTION_COUNT_PER_CYCLE: usize = 10;
+
+#[derive(Clone, Decode, Encode, Hash, Default, PartialEq, Eq, Debug)]
 struct Document {
     contents: MrdtList<Character>,
 }
@@ -93,92 +102,112 @@ impl Entity for Document {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    const INITIAL_TEXT: &str = "---";
+
     let hostname = std::env::var("SCYLLA_URL").unwrap_or_else(|_| "127.0.0.1:9042".to_string());
 
-    let mut store1 = setup_store(hostname.clone(), "test").await.unwrap();
-    let store2 = setup_store(hostname.clone(), "test").await.unwrap();
-    // let store3 = setup_store(hostname, "test").await.unwrap();
+    println!("Setting up datastores...");
+    let mut stores = Vec::with_capacity(REPLICAS);
+    for _ in 0..REPLICAS + 1 {
+        let store = setup_store(hostname.clone(), "test").await.unwrap();
+        stores.push(Some(store));
+    }
 
+    let mut base_store = stores[0].take().unwrap();
     // TODO: It is unclear how to handle different replicas without a "common" ancestor, we start
     // by manually establishing a base commit
     let main_replica = Id::gen();
-    let base_set_ref = store1
-        .insert(&Document::from_str("Hello World!\n"))
+    let base_set_ref = base_store
+        .insert(&Document::from_str(INITIAL_TEXT))
         .await
         .unwrap();
-    let _base_commit = store1
+    let _base_commit = base_store
         .commit(main_replica, VectorClock::default(), base_set_ref)
         .await
         .unwrap();
 
-    let mut replica1 = Replica::clone(Id::gen(), store1).await.unwrap();
-    let mut replica2 = Replica::clone(Id::gen(), store2).await.unwrap();
-    // let mut replica3 = Replica::clone(Id::gen(), store3).await.unwrap();
+    let mut replicas = Vec::with_capacity(REPLICAS);
+    let mut replica_ids = Vec::with_capacity(REPLICAS);
+    for i in 0..REPLICAS {
+        let store = stores[i + 1].take().unwrap();
+        let replica = Replica::clone(Id::gen(), store).await.unwrap();
+        replica_ids.push(replica.id());
+        replicas.push(replica);
+    }
 
-    // for i in 0..1 {
-    //     replica1
-    //         .merge_with::<Document>(replica3.id())
-    //         .await
-    //         .unwrap();
-    //     let mut document1: Document = replica1.latest_object().await.unwrap();
-    //     document1.append_str(&format!("Replica 1: {i}\n"));
-    //     replica1.commit_object(&document1).await.unwrap();
+    println!("Running cycles...");
+    for cycle in 0..CYCLES {
+        let instant = Instant::now();
+        for (replica_ix, replica) in replicas.iter_mut().enumerate() {
+            let merge_with_replica_ix = if replica_ix == 0 {
+                REPLICAS - 1
+            } else {
+                replica_ix - 1
+            };
 
-    //     dbg!(document1.to_string());
+            replica
+                .merge_with::<Document>(replica_ids[merge_with_replica_ix])
+                .await
+                .unwrap();
+            let mut document: Document = replica.latest_object().await.unwrap();
 
-    //     let mut document2: Document = replica2.latest_object().await.unwrap();
-    //     document2.append_str(&format!("Replica 2: {i}\n"));
-    //     replica2.commit_object(&document2).await.unwrap();
-    //     replica2
-    //         .merge_with::<Document>(replica1.id())
-    //         .await
-    //         .unwrap();
+            let mut rng = rand::thread_rng();
+            let char = (replica_ix as u8 + b'a') as char;
+            for _ in 0..CHAR_INSERTION_COUNT_PER_CYCLE {
+                document.insert(rng.gen_range(0..document.len()), char);
+            }
+            replica.commit_object(&document).await.unwrap();
+        }
+        let elapsed_ms = instant.elapsed().as_millis();
+        println!("cycle {} took {} ms", cycle + 1, elapsed_ms);
+    }
 
-    //     dbg!(document2.to_string());
-    //     let mut document2: Document = replica2.latest_object().await.unwrap();
-    //     dbg!(document2.to_string());
+    println!("Finalizing cycles...");
+    for replica in replicas[0..REPLICAS - 1].iter_mut() {
+        replica
+            .merge_with::<Document>(replica_ids[REPLICAS - 1])
+            .await
+            .unwrap();
+    }
 
-    //     let mut document3: Document = replica3.latest_object().await.unwrap();
-    //     document3.append_str(&format!("Replica 3: {i}\n"));
-    //     replica3.commit_object(&document3).await.unwrap();
-    //     replica3
-    //         .merge_with::<Document>(replica1.id())
-    //         .await
-    //         .unwrap();
+    let mut document_contents = Vec::with_capacity(REPLICAS);
+    for replica in replicas.iter_mut() {
+        let document: Document = replica.latest_object().await.unwrap();
+        document_contents.push(document.to_string());
+    }
 
-    //     dbg!(document3.to_string());
-    // }
+    println!("Asserting consistency...");
+    for (i, document) in document_contents.iter().enumerate() {
+        let ix_to_compare = if i + 1 == REPLICAS { 0 } else { i + 1 };
+        assert_eq!(document, &document_contents[ix_to_compare]);
+    }
 
-    let mut document1: Document = replica1.latest_object().await.unwrap();
-    let mut document2: Document = replica2.latest_object().await.unwrap();
+    let replica = replicas.iter_mut().next().unwrap();
+    let document: Document = replica.latest_object().await.unwrap();
+    let text = document.to_string();
 
-    // let document3: Document = replica3.latest_object().await.unwrap();
+    assert_eq!(
+        text.len() - INITIAL_TEXT.len(),
+        CYCLES * REPLICAS * CHAR_INSERTION_COUNT_PER_CYCLE
+    );
 
-    dbg!(document1.to_string());
-    dbg!(document2.to_string());
-
-    document1.append_str("Replica 1\n");
-    document2.append_str("Replica 2\n");
-
-    dbg!(document1.to_string());
-    dbg!(document2.to_string());
-
-    dbg!(replica1.commit_object(&document1).await.unwrap());
-    dbg!(replica1.commit_object(&document2).await.unwrap());
-
-    let document1: Document = replica1.latest_object().await.unwrap();
-    let document2: Document = replica2.latest_object().await.unwrap();
-
-    dbg!(document1.to_string());
-    dbg!(document2.to_string());
-
-    replica2
-        .merge_with::<Document>(replica1.id())
-        .await
-        .unwrap();
-
-    let document2: Document = replica2.latest_object().await.unwrap();
-    dbg!(document2.to_string());
+    let character_count = count_chars(&text);
+    assert_eq!(character_count.len() - 1, REPLICAS);
+    character_count.iter().for_each(|(c, count)| {
+        if *c == '-' {
+            assert_eq!(*count, INITIAL_TEXT.len());
+        } else {
+            assert_eq!(*count, CYCLES * CHAR_INSERTION_COUNT_PER_CYCLE);
+        }
+    });
+    println!("Completed!");
 
     Ok(())
+}
+
+fn count_chars(s: &str) -> FxHashMap<char, usize> {
+    s.chars().fold(FxHashMap::default(), |mut map, c| {
+        *map.entry(c).or_insert(0) += 1;
+        map
+    })
 }
