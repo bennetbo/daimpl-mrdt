@@ -1,7 +1,8 @@
 use mrdt_rs::*;
+use musli::{Decode, Encode};
 use std::env;
 
-#[derive(Default, Debug, Hash, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Debug, Hash, Clone, PartialEq, Eq, Decode, Encode)]
 pub struct Person {
     pub first_name: String,
     pub last_name: String,

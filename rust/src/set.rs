@@ -1,8 +1,9 @@
+use musli::{Decode, Encode};
+
 use super::*;
-use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, hash::Hash};
 
-#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Encode, Decode)]
 pub struct MrdtSet<T: MrdtItem> {
     pub(crate) store: fxhash::FxHashSet<T>,
 }
@@ -86,7 +87,7 @@ pub fn merge_sets<T: MrdtItem>(
     MrdtSet { store: values }
 }
 
-impl<T: MrdtItem + Entity> Entity for MrdtSet<T> {
+impl<T: Entity + MrdtItem> Entity for MrdtSet<T> {
     fn table_name() -> &'static str {
         T::table_name()
     }
@@ -102,7 +103,7 @@ impl<T: MrdtItem> From<fxhash::FxHashSet<T>> for MrdtSet<T> {
 mod tests {
     use super::*;
 
-    #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+    #[derive(Clone, PartialEq, Eq, Hash, Encode, Decode, Debug)]
     struct TestEntity {
         id: Id,
     }
@@ -113,11 +114,7 @@ mod tests {
         }
     }
 
-    impl Entity for TestEntity {
-        fn table_name() -> &'static str {
-            "test_entities"
-        }
-    }
+    impl_entity!(TestEntity, "test_entities");
 
     #[test]
     fn test_insert() {

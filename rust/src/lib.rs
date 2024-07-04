@@ -7,6 +7,10 @@ pub mod storage;
 pub mod vector_clock;
 
 pub use anyhow::{Context, Result};
+use musli::{
+    mode::{Binary, Text},
+    Decode, Encode,
+};
 pub use replica::*;
 pub use set::*;
 pub use storage::*;
@@ -14,10 +18,31 @@ pub use vector_clock::*;
 
 use serde::{Deserialize, Serialize};
 
-pub trait MrdtItem: PartialEq + Eq + std::hash::Hash + Clone {}
-impl<T: PartialEq + Eq + std::hash::Hash + Clone> MrdtItem for T {}
+pub trait MrdtItem:
+    PartialEq
+    + Eq
+    + std::hash::Hash
+    + Clone
+    + Encode<Binary>
+    + Encode<Text>
+    + for<'de> Decode<'de, Binary>
+    + for<'de> Decode<'de, Text>
+{
+}
+impl<
+        T: PartialEq
+            + Eq
+            + std::hash::Hash
+            + Clone
+            + Encode<Binary>
+            + Encode<Text>
+            + for<'de> Decode<'de, Binary>
+            + for<'de> Decode<'de, Text>,
+    > MrdtItem for T
+{
+}
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Encode, Decode, PartialOrd, Ord)]
 pub struct Id([u8; 16]);
 
 impl Id {
@@ -143,6 +168,17 @@ pub trait Mergeable<T> {
     fn merge(lca: &T, left: &T, right: &T) -> T;
 }
 
-pub trait Entity: serde::Serialize + serde::de::DeserializeOwned {
+pub trait Entity {
     fn table_name() -> &'static str;
+}
+
+#[macro_export]
+macro_rules! impl_entity {
+    ($type:ty, $table_name:expr) => {
+        impl Entity for $type {
+            fn table_name() -> &'static str {
+                $table_name
+            }
+        }
+    };
 }

@@ -1,7 +1,7 @@
 use super::*;
 use std::{fmt::Debug, hash::Hash};
 
-#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Decode, Encode, PartialEq, Eq)]
 pub struct MrdtOrd<T: MrdtItem> {
     pub(crate) store: fxhash::FxHashMap<T, usize>,
 }
@@ -163,9 +163,7 @@ fn ordering_to_hashmap<T: Ord + Clone + std::hash::Hash>(
     map
 }
 
-fn map_to_ordering<T: Clone + std::hash::Hash + PartialEq + Eq>(
-    ordering: &fxhash::FxHashMap<T, usize>,
-) -> MrdtSet<(T, T)> {
+fn map_to_ordering<T: MrdtItem>(ordering: &fxhash::FxHashMap<T, usize>) -> MrdtSet<(T, T)> {
     let mut ordered_set = fxhash::FxHashSet::default();
 
     for (value, &idx) in ordering.iter() {

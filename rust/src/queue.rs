@@ -2,7 +2,7 @@ use list::MrdtList;
 
 use super::*;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Decode, Encode, Hash, PartialEq, Eq)]
 pub struct MrdtQueue<T: MrdtItem> {
     pub(crate) store: MrdtList<T>,
 }
@@ -54,7 +54,7 @@ impl<T: MrdtItem> MrdtQueue<T> {
     }
 }
 
-impl<T: MrdtItem + Entity> Entity for MrdtQueue<T> {
+impl<T: Entity + MrdtItem> Entity for MrdtQueue<T> {
     fn table_name() -> &'static str {
         T::table_name()
     }
@@ -71,17 +71,13 @@ mod tests {
     use super::*;
     use std::fmt::Debug;
 
-    #[derive(Clone, Serialize, Deserialize, Hash, PartialEq, Eq, Debug, PartialOrd, Ord)]
+    #[derive(Clone, Decode, Encode, Hash, PartialEq, Eq, Debug, PartialOrd, Ord)]
     struct TestItem {
         id: usize,
         value: String,
     }
 
-    impl Entity for TestItem {
-        fn table_name() -> &'static str {
-            "test_items"
-        }
-    }
+    impl_entity!(TestItem, "test_item");
 
     #[test]
     fn test_queue_empty() {

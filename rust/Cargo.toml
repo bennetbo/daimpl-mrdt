@@ -7,6 +7,7 @@ edition = "2021"
 anyhow = "1.0.86"
 async-trait = "0.1.80"
 fxhash = "0.2.1"
+musli = { version = "0.0.122", features = ["storage"] }
 rand = "0.8.5"
 scylla = "0.13.0"
 serde = { version = "1.0.202", features = ["derive"] }

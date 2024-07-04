@@ -669,12 +669,44 @@ dependencies = [
  "criterion",
  "fxhash",
  "im",
+ "musli",
  "rand",
  "rb_tree",
  "scylla",
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "musli"
+version = "0.0.122"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d7a1d89793329c749e2a9ac305801908463eb6bc738e8ce30fd80e96306cab7"
+dependencies = [
+ "musli-core",
+ "serde",
+ "simdutf8",
+]
+
+[[package]]
+name = "musli-core"
+version = "0.0.122"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70d662e1dd7895c9273e9de177c5c1aeecf3cfb57427292ef4c846e99b9e1274"
+dependencies = [
+ "musli-macros",
+]
+
+[[package]]
+name = "musli-macros"
+version = "0.0.122"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8eae2ce7bd42816bd9dca376b82e29dc779168ed1c8ecb634fa05f7ffcbeb7f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -1042,6 +1074,12 @@ checksum = "a9e9e0b4211b72e7b8b6e85c807d36c212bdb33ea8587f7569562a84df5465b1"
 dependencies = [
  "libc",
 ]
+
+[[package]]
+name = "simdutf8"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f27f6278552951f1f2b8cf9da965d10969b2efdea95a6ec47987ab46edfe263a"
 
 [[package]]
 name = "sized-chunks"
