@@ -3,10 +3,7 @@ use list::MrdtList;
 use mrdt_rs::*;
 use musli::{Decode, Encode};
 use rand::Rng;
-use std::{
-    fmt::Display,
-    time::{Duration, Instant},
-};
+use std::{fmt::Display, time::Instant};
 
 const CYCLES: usize = 100;
 const REPLICAS: usize = 3;
@@ -55,22 +52,6 @@ impl Document {
         )
     }
 
-    pub fn insert_str(&mut self, idx: usize, value: &str) {
-        for (i, c) in value.chars().enumerate() {
-            self.insert(idx + i, c);
-        }
-    }
-
-    pub fn remove(&mut self, idx: usize) {
-        self.contents.remove_at(idx);
-    }
-
-    pub fn remove_str(&mut self, idx: usize, len: usize) {
-        for _ in 0..len {
-            self.remove(idx);
-        }
-    }
-
     pub fn len(&self) -> usize {
         self.contents.len()
     }
@@ -102,7 +83,7 @@ impl Entity for Document {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    const INITIAL_TEXT: &str = "---";
+    const INITIAL_TEXT: &str = "-";
 
     let hostname = std::env::var("SCYLLA_URL").unwrap_or_else(|_| "127.0.0.1:9042".to_string());
 
