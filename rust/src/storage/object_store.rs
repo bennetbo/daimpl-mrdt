@@ -1,21 +1,8 @@
 use std::hash::{Hash, Hasher};
 
-use musli::{
-    de::DecodeOwned,
-    mode::Binary,
-    options::{self, ByteOrder, Integer},
-    storage::Encoding,
-    Encode, Options,
-};
+use musli::{de::DecodeOwned, mode::Binary, Encode};
 
 use super::*;
-
-const OPTIONS: Options = options::new()
-    .with_integer(Integer::Fixed)
-    .with_byte_order(ByteOrder::NATIVE)
-    .build();
-
-const ENCODING: Encoding<OPTIONS> = Encoding::new().with_options();
 
 pub type ObjectRef = u64;
 

@@ -16,8 +16,6 @@ pub use set::*;
 pub use storage::*;
 pub use vector_clock::*;
 
-use serde::{Deserialize, Serialize};
-
 pub trait MrdtItem:
     PartialEq
     + Eq
@@ -76,46 +74,6 @@ impl std::fmt::Display for Id {
     }
 }
 
-impl Serialize for Id {
-    fn serialize<S>(&self, serializer: S) -> std::prelude::v1::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let bytes = unsafe { std::str::from_utf8_unchecked(&self.0) };
-        serializer.serialize_str(bytes)
-    }
-}
-
-impl<'de> Deserialize<'de> for Id {
-    fn deserialize<D>(deserializer: D) -> std::prelude::v1::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        deserializer.deserialize_str(IdDeserializer)
-    }
-}
-
-struct IdDeserializer;
-
-impl serde::de::Visitor<'_> for IdDeserializer {
-    type Value = Id;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("a string")
-    }
-
-    fn visit_str<E>(self, v: &str) -> std::prelude::v1::Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        let data: [u8; 16] = v
-            .as_bytes()
-            .try_into()
-            .map_err(|_| serde::de::Error::missing_field("field"))?;
-        Ok(Id(data))
-    }
-}
-
 impl Id {
     pub fn gen() -> Self {
         use rand::Rng;
@@ -129,9 +87,7 @@ impl Id {
     }
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, PartialOrd, Ord, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, PartialOrd, Ord, Encode, Decode)]
 pub struct Timestamp(u32);
 
 impl Timestamp {
@@ -181,4 +137,37 @@ macro_rules! impl_entity {
             }
         }
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use super::*;
+
+    #[test]
+    fn test_ids_are_unique() {
+        let entries = (0..1000)
+            .into_iter()
+            .map(|_| Id::gen())
+            .collect::<HashSet<_>>();
+
+        assert!(entries.len() == 1000);
+    }
+
+    #[test]
+    fn test_id_generation_and_conversion() {
+        let id = Id::gen();
+        let str_id = id.to_string();
+        assert_eq!(str_id.len(), 16);
+
+        let converted_id = Id::try_from(str_id).unwrap();
+        assert_eq!(id, converted_id);
+    }
+
+    #[test]
+    fn test_id_zero() {
+        let zero_id = Id::zero();
+        assert_eq!(zero_id.as_str(), "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
+    }
 }

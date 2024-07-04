@@ -1,3 +1,5 @@
+use itertools::Itertools;
+
 use super::*;
 use std::{fmt::Debug, hash::Hash};
 
@@ -36,6 +38,10 @@ impl<T: MrdtItem> MrdtOrd<T> {
 
     pub fn contains(&self, value: &T) -> bool {
         self.store.contains_key(value)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.store.iter().sorted_by_key(|(_, v)| *v).map(|(k, _)| k)
     }
 
     pub fn insert(&mut self, ix: usize, value: T) {

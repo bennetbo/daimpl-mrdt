@@ -97,7 +97,7 @@ async fn main() -> Result<()> {
 
     let mut store1 = setup_store(hostname.clone(), "test").await.unwrap();
     let store2 = setup_store(hostname.clone(), "test").await.unwrap();
-    let store3 = setup_store(hostname, "test").await.unwrap();
+    // let store3 = setup_store(hostname, "test").await.unwrap();
 
     // TODO: It is unclear how to handle different replicas without a "common" ancestor, we start
     // by manually establishing a base commit
@@ -113,47 +113,72 @@ async fn main() -> Result<()> {
 
     let mut replica1 = Replica::clone(Id::gen(), store1).await.unwrap();
     let mut replica2 = Replica::clone(Id::gen(), store2).await.unwrap();
-    let mut replica3 = Replica::clone(Id::gen(), store3).await.unwrap();
+    // let mut replica3 = Replica::clone(Id::gen(), store3).await.unwrap();
 
-    for i in 0..1 {
-        replica1
-            .merge_with::<Document>(replica3.id())
-            .await
-            .unwrap();
-        let mut document1: Document = replica1.latest_object().await.unwrap();
-        document1.append_str(&format!("Replica 1: {i}\n"));
-        replica1.commit_object(&document1).await.unwrap();
+    // for i in 0..1 {
+    //     replica1
+    //         .merge_with::<Document>(replica3.id())
+    //         .await
+    //         .unwrap();
+    //     let mut document1: Document = replica1.latest_object().await.unwrap();
+    //     document1.append_str(&format!("Replica 1: {i}\n"));
+    //     replica1.commit_object(&document1).await.unwrap();
 
-        dbg!(document1.to_string());
+    //     dbg!(document1.to_string());
 
-        let mut document2: Document = replica2.latest_object().await.unwrap();
-        document2.append_str(&format!("Replica 2: {i}\n"));
-        replica2.commit_object(&document2).await.unwrap();
-        replica2
-            .merge_with::<Document>(replica1.id())
-            .await
-            .unwrap();
+    //     let mut document2: Document = replica2.latest_object().await.unwrap();
+    //     document2.append_str(&format!("Replica 2: {i}\n"));
+    //     replica2.commit_object(&document2).await.unwrap();
+    //     replica2
+    //         .merge_with::<Document>(replica1.id())
+    //         .await
+    //         .unwrap();
 
-        dbg!(document2.to_string());
+    //     dbg!(document2.to_string());
+    //     let mut document2: Document = replica2.latest_object().await.unwrap();
+    //     dbg!(document2.to_string());
 
-        let mut document3: Document = replica3.latest_object().await.unwrap();
-        document3.append_str(&format!("Replica 3: {i}\n"));
-        replica3.commit_object(&document3).await.unwrap();
-        replica3
-            .merge_with::<Document>(replica1.id())
-            .await
-            .unwrap();
+    //     let mut document3: Document = replica3.latest_object().await.unwrap();
+    //     document3.append_str(&format!("Replica 3: {i}\n"));
+    //     replica3.commit_object(&document3).await.unwrap();
+    //     replica3
+    //         .merge_with::<Document>(replica1.id())
+    //         .await
+    //         .unwrap();
 
-        dbg!(document3.to_string());
-    }
+    //     dbg!(document3.to_string());
+    // }
 
-    let document1: Document = replica1.latest_object().await.unwrap();
-    let document2: Document = replica2.latest_object().await.unwrap();
-    let document3: Document = replica3.latest_object().await.unwrap();
+    let mut document1: Document = replica1.latest_object().await.unwrap();
+    let mut document2: Document = replica2.latest_object().await.unwrap();
+
+    // let document3: Document = replica3.latest_object().await.unwrap();
 
     dbg!(document1.to_string());
     dbg!(document2.to_string());
-    dbg!(document3.to_string());
+
+    document1.append_str("Replica 1\n");
+    document2.append_str("Replica 2\n");
+
+    dbg!(document1.to_string());
+    dbg!(document2.to_string());
+
+    dbg!(replica1.commit_object(&document1).await.unwrap());
+    dbg!(replica1.commit_object(&document2).await.unwrap());
+
+    let document1: Document = replica1.latest_object().await.unwrap();
+    let document2: Document = replica2.latest_object().await.unwrap();
+
+    dbg!(document1.to_string());
+    dbg!(document2.to_string());
+
+    replica2
+        .merge_with::<Document>(replica1.id())
+        .await
+        .unwrap();
+
+    let document2: Document = replica2.latest_object().await.unwrap();
+    dbg!(document2.to_string());
 
     Ok(())
 }

@@ -1,8 +1,7 @@
-use serde::{Deserialize, Serialize};
-
 use super::*;
+use musli::{Decode, Encode};
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct VectorClock {
     timestamps: fxhash::FxHashMap<Id, Timestamp>,
 }

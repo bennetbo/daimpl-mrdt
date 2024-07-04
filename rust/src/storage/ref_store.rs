@@ -5,7 +5,7 @@ use super::*;
 
 pub type CommitId = Id;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Commit {
     pub id: CommitId,
     pub version: VectorClock,
@@ -20,7 +20,7 @@ pub async fn create_tables(store: &mut Store) -> Result<()> {
     let commit_table_name = store.table_name(COMMIT_TABLE_NAME);
     let replica_table_name = store.table_name(REPLICA_TABLE_NAME);
 
-    store.query(format!("CREATE TABLE IF NOT EXISTS {commit_table_name} (id TEXT, version TEXT, object_ref TEXT, prev_commit_id TEXT, PRIMARY KEY (id))"), &[]).await?;
+    store.query(format!("CREATE TABLE IF NOT EXISTS {commit_table_name} (id TEXT, version BLOB, object_ref TEXT, prev_commit_id TEXT, PRIMARY KEY (id))"), &[]).await?;
     store
         .query(
             format!(
@@ -87,11 +87,16 @@ impl RefStore for Store {
 
         update_current_commit_id_for_replica(self, replica_id, commit_id).await?;
 
+        let mut version_bytes = Vec::new();
+        ENCODING
+            .encode(&mut version_bytes, &version)
+            .with_context(|| "Failed to serialize version")?;
+
         self.query(
             format!("INSERT INTO {commit_table} (id, version, object_ref, prev_commit_id) VALUES (?, ?, ?, ?)"),
             (
                 commit_id.as_str(),
-                serde_json::to_string(&version)?,
+                &version_bytes,
                 object_ref.to_string().as_str(),
                 prev_commit_id.map(|id| id.to_string()),
             ),
@@ -127,9 +132,9 @@ impl RefStore for Store {
             .single_row()
             .with_context(|| "Failed to select single row")?;
 
-        let version = result.columns[0]
+        let version_blob = result.columns[0]
             .as_ref()
-            .and_then(|value| value.clone().into_string())
+            .and_then(|value| value.clone().into_blob())
             .with_context(|| "Failed to deserialize value")?;
 
         let object_ref = result.columns[1]
@@ -144,7 +149,7 @@ impl RefStore for Store {
 
         Ok(Commit {
             id: commit_id,
-            version: serde_json::from_str(&version)?,
+            version: ENCODING.decode(version_blob.as_slice())?,
             object_ref,
             parent_commit_id: prev_commit_id.and_then(|id| Id::try_from(id).ok()),
         })
@@ -153,13 +158,14 @@ impl RefStore for Store {
     async fn resolve_commit_by_version(&mut self, version: VectorClock) -> Result<Commit> {
         let commit_table = self.table_name(COMMIT_TABLE_NAME);
 
-        let version_str = serde_json::to_string(&version)?;
+        let mut version_bytes = Vec::new();
+        ENCODING.encode(&mut version_bytes, &version)?;
         let result = self
             .query(
                 format!(
-                    "SELECT id, object_ref, prev_commit_id FROM {commit_table} WHERE version = '{version_str}' ALLOW FILTERING"
+                    "SELECT id, object_ref, prev_commit_id FROM {commit_table} WHERE version = ? ALLOW FILTERING"
                 ),
-                (),
+                (&version_bytes,),
             )
             .await?
             .single_row()

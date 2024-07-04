@@ -30,7 +30,7 @@ impl<T: MrdtItem> MrdtList<T> {
 
     /// Returns an iterator over the elements in the set.
     pub fn iter(&self) -> impl Iterator<Item = &T> {
-        self.mem.iter()
+        self.ord.iter()
     }
 
     /// Returns `true` if the list contains the specified value.
