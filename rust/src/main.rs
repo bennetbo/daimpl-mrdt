@@ -1,7 +1,8 @@
 use mrdt_rs::*;
+use musli::{Decode, Encode};
 use std::env;
 
-#[derive(Default, Debug, Hash, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Debug, Hash, Clone, PartialEq, Eq, Decode, Encode)]
 pub struct Person {
     pub first_name: String,
     pub last_name: String,
@@ -28,7 +29,8 @@ impl Entity for Person {
 async fn main() -> Result<()> {
     let hostname = env::var("SCYLLA_URL").unwrap_or_else(|_| "127.0.0.1:9042".to_string());
 
-    let mut store1 = setup_store(hostname.clone(), "test").await.unwrap();
+    let mut base_store = setup_store(hostname.clone(), "test").await.unwrap();
+    let store1 = setup_store(hostname.clone(), "test").await.unwrap();
     let store2 = setup_store(hostname, "test").await.unwrap();
 
     // TODO: It is unclear how to handle different replicas without a "common" ancestor, we start
@@ -36,8 +38,8 @@ async fn main() -> Result<()> {
     let main_replica = Id::gen();
     let mut base_set = MrdtSet::default();
     base_set.insert(Person::new("Alice", "Johnson", 28));
-    let base_set_ref = store1.insert(&base_set).await.unwrap();
-    let _base_commit = store1
+    let base_set_ref = base_store.insert(&base_set).await.unwrap();
+    let _base_commit = base_store
         .commit(main_replica, VectorClock::default(), base_set_ref)
         .await
         .unwrap();

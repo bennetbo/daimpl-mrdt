@@ -2,7 +2,7 @@ use super::*;
 use ord::MrdtOrd;
 use std::{fmt::Debug, ops::Index};
 
-#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Decode, Encode, Hash, PartialEq, Eq)]
 pub struct MrdtList<T: MrdtItem> {
     pub(crate) mem: MrdtSet<T>,
     pub(crate) ord: MrdtOrd<T>,
@@ -30,7 +30,7 @@ impl<T: MrdtItem> MrdtList<T> {
 
     /// Returns an iterator over the elements in the set.
     pub fn iter(&self) -> impl Iterator<Item = &T> {
-        self.mem.iter()
+        self.ord.iter()
     }
 
     /// Returns `true` if the list contains the specified value.
@@ -82,7 +82,7 @@ impl<T: MrdtItem> Index<usize> for MrdtList<T> {
     }
 }
 
-impl<T: MrdtItem + Entity> Entity for MrdtList<T> {
+impl<T: Entity + MrdtItem> Entity for MrdtList<T> {
     fn table_name() -> &'static str {
         T::table_name()
     }
@@ -100,17 +100,13 @@ mod tests {
     use super::*;
     use std::fmt::Debug;
 
-    #[derive(Clone, Serialize, Deserialize, Hash, PartialEq, Eq, Debug, PartialOrd, Ord)]
+    #[derive(Clone, Decode, Encode, Hash, PartialEq, Eq, Debug, PartialOrd, Ord)]
     struct TestItem {
         id: usize,
         value: String,
     }
 
-    impl Entity for TestItem {
-        fn table_name() -> &'static str {
-            "test_items"
-        }
-    }
+    impl_entity!(TestItem, "test_items");
 
     #[test]
     fn test_list_empty() {

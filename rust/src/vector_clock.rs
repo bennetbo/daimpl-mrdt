@@ -1,8 +1,7 @@
-use serde::{Deserialize, Serialize};
-
 use super::*;
+use musli::{Decode, Encode};
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct VectorClock {
     timestamps: fxhash::FxHashMap<Id, Timestamp>,
 }
@@ -162,11 +161,45 @@ mod tests {
     }
 
     #[test]
-    fn test_inc() {
+    fn test_inc_new_id() {
+        let mut vc = VectorClock::default();
+        let id = Id::gen();
+
+        vc.inc(id);
+        assert_eq!(vc.time_of(id), Some(Timestamp::from(1)));
+    }
+
+    #[test]
+    fn test_inc_multiple_times() {
+        let mut vc = VectorClock::default();
+        let id = Id::gen();
+
+        for i in 1..=5 {
+            vc.inc(id);
+            assert_eq!(vc.time_of(id), Some(Timestamp::from(i)));
+        }
+    }
+
+    #[test]
+    fn test_inc_multiple_ids() {
+        let mut vc = VectorClock::default();
         let id1 = Id::gen();
-        let mut vc = VectorClock::from([(id1, Timestamp::from(2))].as_slice());
+        let id2 = Id::gen();
+
+        vc.inc(id1);
+        vc.inc(id2);
         vc.inc(id1);
 
-        assert_eq!(vc.time_of(id1), Some(Timestamp::from(3)));
+        assert_eq!(vc.time_of(id1), Some(Timestamp::from(2)));
+        assert_eq!(vc.time_of(id2), Some(Timestamp::from(1)));
+    }
+
+    #[test]
+    fn test_inc_from_non_zero() {
+        let id = Id::gen();
+        let mut vc = VectorClock::from([(id, Timestamp::from(5))].as_slice());
+
+        vc.inc(id);
+        assert_eq!(vc.time_of(id), Some(Timestamp::from(6)));
     }
 }
