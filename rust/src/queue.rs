@@ -54,12 +54,6 @@ impl<T: MrdtItem> MrdtQueue<T> {
     }
 }
 
-impl<T: Entity + MrdtItem> Entity for MrdtQueue<T> {
-    fn table_name() -> &'static str {
-        T::table_name()
-    }
-}
-
 impl<T: MrdtItem + Ord> Mergeable<MrdtQueue<T>> for MrdtQueue<T> {
     fn merge(lca: &MrdtQueue<T>, left: &MrdtQueue<T>, right: &MrdtQueue<T>) -> MrdtQueue<T> {
         let store = MrdtList::merge(&lca.store, &left.store, &right.store);
@@ -76,8 +70,6 @@ mod tests {
         id: usize,
         value: String,
     }
-
-    impl_entity!(TestItem, "test_item");
 
     #[test]
     fn test_queue_empty() {

@@ -36,15 +36,12 @@ impl Replica {
     }
 
     /// Resolves and returns the object of the lastest commit from the store.
-    pub async fn latest_object<T: Entity + Hash + DecodeOwned<Binary>>(&mut self) -> Result<T> {
+    pub async fn latest_object<T: Hash + DecodeOwned<Binary>>(&mut self) -> Result<T> {
         self.store.resolve(self.latest_commit.object_ref).await
     }
 
     /// Commits the given object to the store and returns the resulting commit.
-    pub async fn commit_object<T: Entity + Hash + Encode<Binary>>(
-        &mut self,
-        object: &T,
-    ) -> Result<Commit> {
+    pub async fn commit_object<T: Hash + Encode<Binary>>(&mut self, object: &T) -> Result<Commit> {
         let object_ref = self.store.insert(object).await?;
         self.commit(object_ref, self.next_version()).await
     }
@@ -57,9 +54,7 @@ impl Replica {
     }
 
     /// Merges the current replica's state with another replica and commits the merged object.
-    pub async fn merge_with<
-        T: Entity + Hash + Encode<Binary> + DecodeOwned<Binary> + Mergeable<T>,
-    >(
+    pub async fn merge_with<T: Hash + Encode<Binary> + DecodeOwned<Binary> + Mergeable<T>>(
         &mut self,
         other_replica: ReplicaId,
     ) -> Result<Commit> {

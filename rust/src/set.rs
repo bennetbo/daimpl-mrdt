@@ -87,12 +87,6 @@ pub fn merge_sets<T: MrdtItem>(
     MrdtSet { store: values }
 }
 
-impl<T: Entity + MrdtItem> Entity for MrdtSet<T> {
-    fn table_name() -> &'static str {
-        T::table_name()
-    }
-}
-
 impl<T: MrdtItem> From<fxhash::FxHashSet<T>> for MrdtSet<T> {
     fn from(value: fxhash::FxHashSet<T>) -> Self {
         Self { store: value }
@@ -113,8 +107,6 @@ mod tests {
             TestEntity { id }
         }
     }
-
-    impl_entity!(TestEntity, "test_entities");
 
     #[test]
     fn test_insert() {

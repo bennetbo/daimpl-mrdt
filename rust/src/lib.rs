@@ -124,21 +124,6 @@ pub trait Mergeable<T> {
     fn merge(lca: &T, left: &T, right: &T) -> T;
 }
 
-pub trait Entity {
-    fn table_name() -> &'static str;
-}
-
-#[macro_export]
-macro_rules! impl_entity {
-    ($type:ty, $table_name:expr) => {
-        impl Entity for $type {
-            fn table_name() -> &'static str {
-                $table_name
-            }
-        }
-    };
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;

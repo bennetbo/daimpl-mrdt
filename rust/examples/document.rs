@@ -75,12 +75,6 @@ impl Mergeable<Document> for Document {
     }
 }
 
-impl Entity for Document {
-    fn table_name() -> &'static str {
-        "document"
-    }
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     const INITIAL_TEXT: &str = "-";

@@ -82,12 +82,6 @@ impl<T: MrdtItem> Index<usize> for MrdtList<T> {
     }
 }
 
-impl<T: Entity + MrdtItem> Entity for MrdtList<T> {
-    fn table_name() -> &'static str {
-        T::table_name()
-    }
-}
-
 impl<T: MrdtItem + Ord> Mergeable<MrdtList<T>> for MrdtList<T> {
     fn merge(lca: &MrdtList<T>, left: &MrdtList<T>, right: &MrdtList<T>) -> MrdtList<T> {
         let mem = MrdtSet::merge(&lca.mem, &left.mem, &right.mem);
@@ -105,8 +99,6 @@ mod tests {
         id: usize,
         value: String,
     }
-
-    impl_entity!(TestItem, "test_items");
 
     #[test]
     fn test_list_empty() {

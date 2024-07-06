@@ -21,16 +21,12 @@ pub async fn create_tables(store: &mut Store) -> Result<()> {
 
 #[allow(async_fn_in_trait)]
 pub trait ObjectStore {
-    async fn resolve<T: Entity + Hash + DecodeOwned<Binary>>(&mut self, id: ObjectRef)
-        -> Result<T>;
-    async fn insert<T: Entity + Hash + Encode<Binary>>(&mut self, object: &T) -> Result<ObjectRef>;
+    async fn resolve<T: Hash + DecodeOwned<Binary>>(&mut self, id: ObjectRef) -> Result<T>;
+    async fn insert<T: Hash + Encode<Binary>>(&mut self, object: &T) -> Result<ObjectRef>;
 }
 
 impl ObjectStore for Store {
-    async fn resolve<T: Entity + Hash + DecodeOwned<Binary>>(
-        &mut self,
-        id: ObjectRef,
-    ) -> Result<T> {
+    async fn resolve<T: Hash + DecodeOwned<Binary>>(&mut self, id: ObjectRef) -> Result<T> {
         let object_table = self.table_name(OBJECT_TABLE_NAME);
 
         let object_blob = self
@@ -51,7 +47,7 @@ impl ObjectStore for Store {
             .with_context(|| "Failed to deserialize object")
     }
 
-    async fn insert<T: Entity + Hash + Encode<Binary>>(&mut self, object: &T) -> Result<ObjectRef> {
+    async fn insert<T: Hash + Encode<Binary>>(&mut self, object: &T) -> Result<ObjectRef> {
         let object_table = self.table_name(OBJECT_TABLE_NAME);
 
         let mut data = Vec::new();

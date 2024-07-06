@@ -19,12 +19,6 @@ impl Person {
     }
 }
 
-impl Entity for Person {
-    fn table_name() -> &'static str {
-        "person"
-    }
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let hostname = env::var("SCYLLA_URL").unwrap_or_else(|_| "127.0.0.1:9042".to_string());
