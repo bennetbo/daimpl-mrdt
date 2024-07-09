@@ -2,7 +2,14 @@ use list::MrdtList;
 use mrdt_rs::*;
 use musli::{Decode, Encode};
 use rand::Rng;
-use std::{fmt::Display, time::Duration};
+use std::{
+    fmt::Display,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::{Duration, Instant},
+};
 use tokio::time::interval;
 
 #[derive(Clone, Decode, Encode, Hash, Default, PartialEq, Eq, Debug)]
@@ -65,9 +72,8 @@ impl Display for Document {
 
 impl Mergeable<Document> for Document {
     fn merge(lca: &Document, left: &Document, right: &Document) -> Document {
-        Document {
-            contents: MrdtList::merge(&lca.contents, &left.contents, &right.contents),
-        }
+        let contents = MrdtList::merge(&lca.contents, &left.contents, &right.contents);
+        Document { contents }
     }
 }
 
@@ -111,7 +117,7 @@ async fn main() -> Result<()> {
 
     if args.setup {
         println!("Setting up database...");
-        let mut store = setup_store(hostname.clone(), "test").await.unwrap();
+        let store = setup_store(hostname.clone(), "test").await.unwrap();
         println!("Connected to database!");
         let main_replica = Id::gen();
         let document = Document::from_str(include_str!("../data/text.txt"));
@@ -124,6 +130,8 @@ async fn main() -> Result<()> {
         println!("Setup complete!");
         return Ok(());
     }
+
+    static STOP: AtomicBool = AtomicBool::new(false);
 
     let mut replica_ids = args
         .replicas
@@ -138,14 +146,37 @@ async fn main() -> Result<()> {
 
     let mut replica = Replica::clone(replica_id, store).await.unwrap();
 
-    let mut interval = interval(Duration::from_millis(250));
+    let mut delay = interval(Duration::from_millis(250));
 
+    let mut document_version = replica.latest_commit().version.clone();
     let mut document: Document = replica.latest_object().await.unwrap();
 
     println!("Running cycles...");
 
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Id>(1);
+
+    let replica_ids = Arc::new(replica_ids.clone());
+    // We simulate merging with other replicas by requesting a merge with another replica every 500ms
+    let merge_thread = tokio::spawn({
+        async move {
+            // Wait for 500ms before starting to merge
+            tokio::time::sleep(Duration::from_millis(1000)).await;
+
+            let mut delay = interval(Duration::from_millis(5000));
+
+            while !STOP.load(Ordering::Relaxed) {
+                for replica_id in replica_ids.iter() {
+                    let _ = tx.try_send(replica_id.clone());
+                    delay.tick().await;
+                }
+            }
+        }
+    });
+
     for _ in 0..args.ticks {
-        interval.tick().await;
+        delay.tick().await;
+
+        let latency = Instant::now();
 
         // Generate a random character
         let random_char = rand::thread_rng().gen_range('a'..='z');
@@ -154,12 +185,55 @@ async fn main() -> Result<()> {
         let random_position = rand::thread_rng().gen_range(0..document.len());
         document.insert(random_position, random_char);
 
-        replica.commit_object(&document).await?;
+        let curr_document: Document = replica.latest_object().await.unwrap();
 
-        println!("Inserted '{}' at position {}", random_char, random_position);
+        while let Ok(replica_id_to_merge_with) = rx.try_recv() {
+            println!(
+                "Received merge request for replica {}",
+                replica_id_to_merge_with
+            );
+            replica
+                .merge_with::<Document>(replica_id_to_merge_with)
+                .await
+                .unwrap();
+        }
+
+        if replica.latest_version() != &document_version {
+            println!("Merge occurred in background, merging with local version...");
+            //We need to merge again, because there occured a merge while we were inserting a new character
+            let lca_version = VectorClock::lca(&replica.latest_version(), &document_version);
+            let lca_commit = replica
+                .store()
+                .resolve_commit_by_version(lca_version)
+                .await
+                .unwrap();
+            let lca_object = replica
+                .store()
+                .resolve::<Document>(lca_commit.object_ref)
+                .await
+                .unwrap();
+
+            document = Document::merge(&lca_object, &curr_document, &document);
+        }
+
+        let commit = replica.commit_object(&document).await.unwrap();
+        document_version = commit.version.clone();
+
+        let elpased_ms = latency.elapsed().as_millis();
+        println!(
+            "Inserted '{}' at position {}, {} ms elapsed",
+            random_char, random_position, elpased_ms
+        );
     }
 
-    std::fs::write("data/document.txt", document.to_string()).unwrap();
+    STOP.store(true, Ordering::Relaxed);
+    _ = merge_thread.await;
+
+    std::fs::write(
+        format!("data/document_latency_{}.txt", replica_id.to_string()),
+        document.to_string(),
+    )
+    .unwrap();
 
     Ok(())
 }

@@ -47,7 +47,7 @@ impl Store {
     }
 
     pub async fn query(
-        &mut self,
+        &self,
         query: impl Into<Query>,
         values: impl SerializeRow,
     ) -> Result<QueryResult> {
