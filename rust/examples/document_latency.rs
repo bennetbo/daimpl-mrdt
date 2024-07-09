@@ -4,10 +4,7 @@ use musli::{Decode, Encode};
 use rand::Rng;
 use std::{
     fmt::Display,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
+    sync::atomic::{AtomicBool, Ordering},
     time::{Duration, Instant},
 };
 use tokio::time::interval;
@@ -155,7 +152,7 @@ async fn main() -> Result<()> {
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Id>(1);
 
-    let replica_ids = Arc::new(replica_ids.clone());
+    let replica_ids_copy = replica_ids.clone();
     // We simulate merging with other replicas by requesting a merge with another replica every 500ms
     let merge_thread = tokio::spawn({
         async move {
@@ -165,13 +162,15 @@ async fn main() -> Result<()> {
             let mut delay = interval(Duration::from_millis(5000));
 
             while !STOP.load(Ordering::Relaxed) {
-                for replica_id in replica_ids.iter() {
+                for replica_id in replica_ids_copy.iter() {
                     let _ = tx.try_send(replica_id.clone());
                     delay.tick().await;
                 }
             }
         }
     });
+
+    let mut latencies = Vec::with_capacity(args.ticks);
 
     for _ in 0..args.ticks {
         delay.tick().await;
@@ -219,19 +218,43 @@ async fn main() -> Result<()> {
         let commit = replica.commit_object(&document).await.unwrap();
         document_version = commit.version.clone();
 
-        let elpased_ms = latency.elapsed().as_millis();
+        let elapsed_ms = latency.elapsed().as_millis();
+        latencies.push((document.len(), elapsed_ms));
         println!(
             "Inserted '{}' at position {}, {} ms elapsed",
-            random_char, random_position, elpased_ms
+            random_char, random_position, elapsed_ms
         );
     }
 
     STOP.store(true, Ordering::Relaxed);
     _ = merge_thread.await;
 
+    println!("Waiting for other replicas to complete...");
+
+    tokio::time::sleep(Duration::from_millis(5000)).await;
+
+    println!("Merging with other replicas...");
+    for replica_id in replica_ids.iter() {
+        replica
+            .merge_with::<Document>(replica_id.clone())
+            .await
+            .unwrap();
+    }
+    let document: Document = replica.latest_object().await.unwrap();
+
     std::fs::write(
         format!("data/document_latency_{}.txt", replica_id.to_string()),
         document.to_string(),
+    )
+    .unwrap();
+
+    std::fs::write(
+        format!("data/latencies_{}.txt", replica_id.to_string()),
+        latencies
+            .iter()
+            .map(|&(len, ms)| format!("{} {}", len, ms))
+            .collect::<Vec<String>>()
+            .join("\n"),
     )
     .unwrap();
 
