@@ -72,6 +72,16 @@ impl<T: MrdtItem> MrdtList<T> {
             self.mem.remove(&removed);
         }
     }
+
+    /// Returns the underlying [MrdtSet] instance.
+    pub fn mem(&self) -> &MrdtSet<T> {
+        &self.mem
+    }
+
+    /// Returns the underlying [MrdtOrd] instance.
+    pub fn ord(&self) -> &MrdtOrd<T> {
+        &self.ord
+    }
 }
 
 impl<T: MrdtItem> Index<usize> for MrdtList<T> {
