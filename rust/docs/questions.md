@@ -38,8 +38,10 @@ Status & open questions:
     - We perform the merge operation as described in the paper
       - Intersection of lca, left, right + diff of lca and left + diff of lca and right
     - Then we perform a graph search to reconstruct the hashmap
-- How does the diffing actually work? At this point we are questioning whether the "Quark store" was actually ever implemented (maybe using other data store)?
+- How does the diffing actually work? At this point we are questioning whether the "Quark store" was actually ever implemented (at least not with Scylla)?
   - Looking at the code, the benchmark for measuring diffing is actually using git directly
     See paper "(computed by Quark’s content-addressable abstraction)"
   - Also found some interesting code in the authors github repo: /ocaml-irmin/apps/tpcc/irbmap.ml
+    - Maybe an alternative implementation of the quark store is here?
+      /ocaml-irmin/red_black_tree/mem/irbset.ml
   - Do we need to take another approach (e.g. using a different data store)?
