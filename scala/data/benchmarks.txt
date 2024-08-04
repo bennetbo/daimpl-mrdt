@@ -1,0 +1,19 @@
+[info] Benchmark               (additionalOperations)  (lcaSize)   Mode  Cnt        Score       Error  Units
+[info] MyBenchmark.merge_list                       1         10  thrpt    3    37178.804 ±  1522.297  ops/s
+[info] MyBenchmark.merge_list                       1        100  thrpt    3      163.093 ±    31.480  ops/s
+[info] MyBenchmark.merge_list                       1       1000  thrpt    3        0.336 ±     0.383  ops/s
+[info] MyBenchmark.merge_list                      10         10  thrpt    3     9422.986 ±  2527.841  ops/s
+[info] MyBenchmark.merge_list                      10        100  thrpt    3      128.745 ±    19.767  ops/s
+[info] MyBenchmark.merge_list                      10       1000  thrpt    3        0.374 ±     0.020  ops/s
+[info] MyBenchmark.merge_list                     100         10  thrpt    3      159.272 ±    32.823  ops/s
+[info] MyBenchmark.merge_list                     100        100  thrpt    3       30.008 ±     2.375  ops/s
+[info] MyBenchmark.merge_list                     100       1000  thrpt    3        0.226 ±     0.023  ops/s
+[info] MyBenchmark.merge_set                        1         10  thrpt    3  3141512.977 ± 63048.442  ops/s
+[info] MyBenchmark.merge_set                        1        100  thrpt    3   186456.335 ±  6353.802  ops/s
+[info] MyBenchmark.merge_set                        1       1000  thrpt    3    18165.310 ±  1858.599  ops/s
+[info] MyBenchmark.merge_set                       10         10  thrpt    3  1650485.245 ± 17494.628  ops/s
+[info] MyBenchmark.merge_set                       10        100  thrpt    3   153491.472 ±  3484.946  ops/s
+[info] MyBenchmark.merge_set                       10       1000  thrpt    3    17084.924 ±  1709.713  ops/s
+[info] MyBenchmark.merge_set                      100         10  thrpt    3   224075.948 ±  6566.346  ops/s
+[info] MyBenchmark.merge_set                      100        100  thrpt    3    49922.736 ±  1397.733  ops/s
+[info] MyBenchmark.merge_set                      100       1000  thrpt    3    11311.257 ±   199.348  ops/s
