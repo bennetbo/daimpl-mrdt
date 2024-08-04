@@ -1,19 +1,17 @@
 package mrdt
 
-package mrdt
-
 import org.scalatest.funsuite.AnyFunSuite
 
-class OrdTests extends AnyFunSuite {
+class MrdtOrdTests extends AnyFunSuite {
   test("Ord.empty") {
-    assert(new Ord[Int]().size === 0)
+    assert(new MrdtOrd[Int]().size === 0)
   }
 
   test("Ord.insert") {
-    val ord = new Ord[Int]()
-    ord.insert(0, 1)
-    ord.insert(1, 2)
-    ord.insert(2, 3)
+    val ord = new MrdtOrd[Int]()
+      .insert(0, 1)
+      .insert(1, 2)
+      .insert(2, 3)
 
     assert(ord.size === 3)
     assert(ord.indexOf(1) == Some(0))
@@ -22,10 +20,10 @@ class OrdTests extends AnyFunSuite {
   }
 
   test("Ord.toOrderedSet") {
-    val ord = new Ord[Int]()
-    ord.insert(0, 1)
-    ord.insert(1, 2)
-    ord.insert(2, 3)
+    val ord = new MrdtOrd[Int]()
+      .insert(0, 1)
+      .insert(1, 2)
+      .insert(2, 3)
 
     val set = ord.toOrderedSet
 

@@ -1,10 +1,8 @@
 package mrdt
 
-package mrdt
-
 import org.scalatest.funsuite.AnyFunSuite
-import scala.collection.immutable.Set as ScalaSet
-import scala.collection.mutable.HashMap
+import scala.collection.immutable.Set
+import scala.collection.immutable.HashMap
 
 class UtilsTests extends AnyFunSuite {
   test("Utils.mapToOrdering") {
@@ -19,7 +17,7 @@ class UtilsTests extends AnyFunSuite {
 
   test("Utils.orderingToHashMap") {
     val result =
-      Utils.orderingToHashMap(ScalaSet((2, 3), (5, 3), (5, 2), (4, 3), (4, 2)))
+      Utils.orderingToHashMap(Set((2, 3), (5, 3), (5, 2), (4, 3), (4, 2)))
 
     assert(result.size == 4)
     assert(result(4) == 0)

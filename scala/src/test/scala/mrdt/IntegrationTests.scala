@@ -13,18 +13,16 @@ class IntegrationTests extends AnyFunSuite {
   }
 
   test("todo_list") {
-    val state = List.of(
+    val state = MrdtList.of(
       TodoItem(1, "Buy milk"),
       TodoItem(2, "Walk the dog"),
       TodoItem(3, "Do laundry")
     )
 
-    val replica1 = state.clone()
-    replica1.insert(0, TodoItem(4, "Clean the house"))
+    val replica1 = state.insert(0, TodoItem(4, "Clean the house"))
 
-    val replica2 = state.clone()
-    replica2.removeAt(1)
-    replica2.insert(0, TodoItem(5, "Cook dinner"))
+    val replica2 =
+      state.removeAt(1)._2.insert(0, TodoItem(5, "Cook dinner"))
 
     val mergedState = state.merge(replica1, replica2)
 
