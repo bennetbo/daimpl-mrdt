@@ -9,3 +9,5 @@ lazy val root = (project in file("."))
 
 ThisBuild / libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.17" % Test
 ThisBuild / libraryDependencies += "org.scalatestplus" %% "scalacheck-1-17" % "3.2.17.0" % Test
+
+enablePlugins(JmhPlugin)

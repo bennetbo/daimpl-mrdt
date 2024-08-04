@@ -1,0 +1,19 @@
+Benchmark               (additionalOperations)  (lcaSize)   Mode  Cnt        Score   Error  Units
+MyBenchmark.merge_list                       1         10  thrpt         36357.364          ops/s
+MyBenchmark.merge_list                       1        100  thrpt           157.749          ops/s
+MyBenchmark.merge_list                       1       1000  thrpt             0.367          ops/s
+MyBenchmark.merge_list                      10         10  thrpt          9652.668          ops/s
+MyBenchmark.merge_list                      10        100  thrpt           128.583          ops/s
+MyBenchmark.merge_list                      10       1000  thrpt             0.350          ops/s
+MyBenchmark.merge_list                     100         10  thrpt           159.090          ops/s
+MyBenchmark.merge_list                     100        100  thrpt            27.670          ops/s
+MyBenchmark.merge_list                     100       1000  thrpt             0.283          ops/s
+MyBenchmark.merge_set                        1         10  thrpt       3093063.413          ops/s
+MyBenchmark.merge_set                        1        100  thrpt        185819.557          ops/s
+MyBenchmark.merge_set                        1       1000  thrpt         18002.419          ops/s
+MyBenchmark.merge_set                       10         10  thrpt       1635921.414          ops/s
+MyBenchmark.merge_set                       10        100  thrpt        152864.106          ops/s
+MyBenchmark.merge_set                       10       1000  thrpt         17306.615          ops/s
+MyBenchmark.merge_set                      100         10  thrpt        223543.506          ops/s
+MyBenchmark.merge_set                      100        100  thrpt         48163.282          ops/s
+MyBenchmark.merge_set                      100       1000  thrpt         11300.303          ops/s
