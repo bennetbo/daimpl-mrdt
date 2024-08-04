@@ -11,13 +11,18 @@ pub struct Replica {
 }
 
 impl Replica {
-    pub async fn clone(id: ReplicaId, mut store: Store) -> Result<Self> {
+    pub async fn clone(id: ReplicaId, store: Store) -> Result<Self> {
         let latest_commit = store.clone(id).await?;
         Ok(Self {
             id,
             store,
             latest_commit,
         })
+    }
+
+    /// Returns the underlying store of the replica.
+    pub fn store(&self) -> &Store {
+        &self.store
     }
 
     /// Returns the identifier of the replica.
@@ -36,7 +41,7 @@ impl Replica {
     }
 
     /// Resolves and returns the object of the lastest commit from the store.
-    pub async fn latest_object<T: Hash + DecodeOwned<Binary>>(&mut self) -> Result<T> {
+    pub async fn latest_object<T: Hash + DecodeOwned<Binary>>(&self) -> Result<T> {
         self.store.resolve(self.latest_commit.object_ref).await
     }
 

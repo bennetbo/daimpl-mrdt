@@ -172,11 +172,12 @@ fn ordering_to_hashmap<T: Ord + Clone + std::hash::Hash>(
 fn map_to_ordering<T: MrdtItem>(ordering: &fxhash::FxHashMap<T, usize>) -> MrdtSet<(T, T)> {
     let mut ordered_set = fxhash::FxHashSet::default();
 
-    for (value, &idx) in ordering.iter() {
-        for (value2, &idx2) in ordering.iter() {
-            if idx < idx2 {
-                ordered_set.insert((value.clone(), value2.clone()));
-            }
+    let mut sorted_items: Vec<_> = ordering.iter().collect();
+    sorted_items.sort_by_key(|(_, &idx)| idx);
+
+    for (i, (value, _)) in sorted_items.iter().enumerate() {
+        for (value2, _) in &sorted_items[i + 1..] {
+            ordered_set.insert(((*value).clone(), (*value2).clone()));
         }
     }
 

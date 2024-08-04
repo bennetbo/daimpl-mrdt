@@ -28,9 +28,6 @@ pub async fn setup_store(
     let keyspace = keyspace.into();
 
     let session: Session = SessionBuilder::new().known_node(hostname).build().await?;
-    session
-        .query(format!("DROP KEYSPACE IF EXISTS {keyspace}"), ())
-        .await?;
     session.query(format!("CREATE KEYSPACE IF NOT EXISTS {keyspace} WITH REPLICATION = {{'class' : 'NetworkTopologyStrategy', 'replication_factor' : 1}}"), ()).await?;
 
     let mut this = Store::new(keyspace, session);
@@ -50,7 +47,7 @@ impl Store {
     }
 
     pub async fn query(
-        &mut self,
+        &self,
         query: impl Into<Query>,
         values: impl SerializeRow,
     ) -> Result<QueryResult> {

@@ -17,6 +17,10 @@ tokio = { version = "1.37.0", features = ["full"] }
 criterion = "0.5.1"
 rb_tree = "0.5.0"
 im = "15.1.0"
+clap = { version = "4.5.9", features = ["derive"] }
+
+[profile.release]
+debug = true
 
 [[bench]]
 name = "collections"
@@ -29,3 +33,11 @@ harness = false
 [[bench]]
 name = "merge_base"
 harness = false
+
+[[bench]]
+name = "document"
+harness = false
+
+[[bin]]
+name = "profile_merge"
+path = "src/bin/profile_merge.rs"

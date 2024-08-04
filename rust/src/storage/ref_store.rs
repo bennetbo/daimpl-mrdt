@@ -38,21 +38,21 @@ pub async fn create_tables(store: &mut Store) -> Result<()> {
 
 #[allow(async_fn_in_trait)]
 pub trait RefStore {
-    async fn clone(&mut self, replica_id: ReplicaId) -> Result<Commit>;
+    async fn clone(&self, replica_id: ReplicaId) -> Result<Commit>;
     async fn commit(
-        &mut self,
+        &self,
         replica_id: ReplicaId,
         version: VectorClock,
         object_ref: ObjectRef,
     ) -> Result<Commit>;
 
-    async fn latest_commit_for_replica(&mut self, replica_id: ReplicaId) -> Result<Option<Commit>>;
-    async fn resolve_commit(&mut self, commit_id: CommitId) -> Result<Commit>;
-    async fn resolve_commit_by_version(&mut self, version: VectorClock) -> Result<Commit>;
+    async fn latest_commit_for_replica(&self, replica_id: ReplicaId) -> Result<Option<Commit>>;
+    async fn resolve_commit(&self, commit_id: CommitId) -> Result<Commit>;
+    async fn resolve_commit_by_version(&self, version: VectorClock) -> Result<Commit>;
 }
 
 impl RefStore for Store {
-    async fn clone(&mut self, replica_id: ReplicaId) -> Result<Commit> {
+    async fn clone(&self, replica_id: ReplicaId) -> Result<Commit> {
         let commit_table = self.table_name(COMMIT_TABLE_NAME);
 
         let commit_id = self
@@ -74,7 +74,7 @@ impl RefStore for Store {
     }
 
     async fn commit(
-        &mut self,
+        &self,
         replica_id: ReplicaId,
         version: VectorClock,
         object_ref: ObjectRef,
@@ -111,14 +111,14 @@ impl RefStore for Store {
         })
     }
 
-    async fn latest_commit_for_replica(&mut self, replica_id: ReplicaId) -> Result<Option<Commit>> {
+    async fn latest_commit_for_replica(&self, replica_id: ReplicaId) -> Result<Option<Commit>> {
         match current_commit_id_for_replica(self, replica_id).await? {
             Some(commit_id) => Ok(Some(self.resolve_commit(commit_id).await?)),
             None => Ok(None),
         }
     }
 
-    async fn resolve_commit(&mut self, commit_id: CommitId) -> Result<Commit> {
+    async fn resolve_commit(&self, commit_id: CommitId) -> Result<Commit> {
         let commit_table = self.table_name(COMMIT_TABLE_NAME);
 
         let result = self
@@ -155,7 +155,7 @@ impl RefStore for Store {
         })
     }
 
-    async fn resolve_commit_by_version(&mut self, version: VectorClock) -> Result<Commit> {
+    async fn resolve_commit_by_version(&self, version: VectorClock) -> Result<Commit> {
         let commit_table = self.table_name(COMMIT_TABLE_NAME);
 
         let mut version_bytes = Vec::new();
@@ -196,7 +196,7 @@ impl RefStore for Store {
 }
 
 async fn current_commit_id_for_replica(
-    store: &mut Store,
+    store: &Store,
     replica_id: ReplicaId,
 ) -> Result<Option<CommitId>> {
     let replica_table = store.table_name(REPLICA_TABLE_NAME);
@@ -222,7 +222,7 @@ async fn current_commit_id_for_replica(
 }
 
 async fn update_current_commit_id_for_replica(
-    store: &mut Store,
+    store: &Store,
     replica_id: ReplicaId,
     commit_id: CommitId,
 ) -> Result<()> {

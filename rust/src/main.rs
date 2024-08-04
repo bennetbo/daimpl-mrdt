@@ -23,7 +23,7 @@ impl Person {
 async fn main() -> Result<()> {
     let hostname = env::var("SCYLLA_URL").unwrap_or_else(|_| "127.0.0.1:9042".to_string());
 
-    let mut base_store = setup_store(hostname.clone(), "test").await.unwrap();
+    let base_store = setup_store(hostname.clone(), "test").await.unwrap();
     let store1 = setup_store(hostname.clone(), "test").await.unwrap();
     let store2 = setup_store(hostname, "test").await.unwrap();
 
