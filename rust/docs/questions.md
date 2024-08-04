@@ -45,3 +45,8 @@ Status & open questions:
     - Maybe an alternative implementation of the quark store is here?
       /ocaml-irmin/red_black_tree/mem/irbset.ml
   - Do we need to take another approach (e.g. using a different data store)?
+
+TODO:
+- Ob set immutable set faster?
+- Construct Ob sets early and do set merge only
+- Find out how merging works in Ocaml implementation
