@@ -77,24 +77,97 @@ impl<T: MrdtItem> MrdtOrd<T> {
     }
 }
 
+// left: (1, 2), (2, 3), (3, 4)
+// right: (1, 3)
+// lca: (1, 2), (2, 3)
+//
+// union: (1, 2), (1, 3), (2, 3), (3, 4)
+// toposort:
+//  1 -> 2 -> 3 -> 4
+//    ------>
+// Intersect with memset: 1 -> 3 -> 4
+
+pub fn toposort<T: MrdtItem + Ord>(pairs: &MrdtSet<(T, T)>) -> Vec<T> {
+    use std::cmp::Reverse;
+    use std::collections::{BinaryHeap, HashMap, HashSet};
+
+    let mut graph: HashMap<T, Vec<T>> = HashMap::new();
+    let mut in_degree: HashMap<T, usize> = HashMap::new();
+    let mut all_nodes: HashSet<T> = HashSet::new();
+
+    // Build the graph and calculate in-degrees
+    for (from, to) in pairs.iter() {
+        graph.entry(from.clone()).or_default().push(to.clone());
+        *in_degree.entry(to.clone()).or_insert(0) += 1;
+        all_nodes.insert(from.clone());
+        all_nodes.insert(to.clone());
+    }
+
+    // Use a BinaryHeap as a priority queue
+    // Reverse is used to make it a min-heap based on (in-degree, node value)
+    let mut queue: BinaryHeap<Reverse<(usize, T)>> = all_nodes
+        .into_iter()
+        .map(|node| Reverse((*in_degree.get(&node).unwrap_or(&0), node)))
+        .collect();
+
+    let mut result = Vec::new();
+    let mut processed = HashSet::new();
+
+    while let Some(Reverse((_, node))) = queue.pop() {
+        if processed.contains(&node) {
+            continue;
+        }
+
+        result.push(node.clone());
+        processed.insert(node.clone());
+
+        if let Some(neighbors) = graph.get(&node) {
+            for neighbor in neighbors {
+                if processed.contains(neighbor) {
+                    continue;
+                }
+
+                if let Some(degree) = in_degree.get_mut(neighbor) {
+                    *degree -= 1;
+                    // Update the priority queue with the new in-degree
+                    queue.push(Reverse((*degree, neighbor.clone())));
+                }
+            }
+        }
+    }
+
+    result
+}
+
 impl<T: MrdtItem + Ord> MrdtOrd<T> {
     pub fn merge(lca: &Self, left: &Self, right: &Self, merged_mem: &MrdtSet<T>) -> Self {
         let left = map_to_ordering(&left.store);
         let right = map_to_ordering(&right.store);
         let lca = map_to_ordering(&lca.store);
 
-        let merged_ord = merge_sets(&lca, &left, &right);
+        let union = left.union(&right.union(&lca));
+        let set = toposort(&union);
 
-        let mut merged = merged_ord.clone();
-        for (k, v) in merged_ord.iter() {
-            if !merged_mem.contains(k) || !merged_mem.contains(v) {
-                merged.remove(&(k.clone(), v.clone()));
+        let mut merged_set = fxhash::FxHashMap::default();
+        let mut deleted_elements = 0;
+        for (idx, value) in set.iter().enumerate() {
+            if merged_mem.contains(value) {
+                merged_set.insert(value.clone(), idx - deleted_elements);
+            } else {
+                deleted_elements += 1;
             }
         }
+        Self { store: merged_set }
+        // let mut merged = merged_ord.clone();
+        // for (k, v) in merged_ord.iter() {
+        //     if !merged_mem.contains(k) || !merged_mem.contains(v) {
+        //         merged.remove(&(k.clone(), v.clone()));
+        //     }
+        // }
 
-        Self {
-            store: ordering_to_hashmap(&merged.store),
-        }
+        // Self {
+        //     store: ordering_to_hashmap(&merged.store),
+        // }
     }
 }
 
@@ -174,10 +247,9 @@ fn map_to_ordering<T: MrdtItem>(ordering: &fxhash::FxHashMap<T, usize>) -> MrdtS
     let mut sorted_items: Vec<_> = ordering.iter().collect();
     sorted_items.sort_by_key(|(_, &idx)| idx);
 
-    for (i, (value, _)) in sorted_items.iter().enumerate() {
-        for (value2, _) in &sorted_items[i + 1..] {
-            ordered_set.insert(((*value).clone(), (*value2).clone()));
-        }
+    for (i, (value, _)) in sorted_items.iter().enumerate().skip(1) {
+        let prev_value = sorted_items[i - 1].0;
+        ordered_set.insert((prev_value.clone(), (*value).clone()));
     }
 
     MrdtSet::from(ordered_set)
@@ -232,7 +304,7 @@ mod tests {
         let result = map_to_ordering(&ordering);
 
         let expected: MrdtSet<(char, char)> = MrdtSet::from(
-            vec![('a', 'b'), ('a', 'c'), ('b', 'c')]
+            vec![('a', 'b'), ('b', 'c')]
                 .into_iter()
                 .collect::<fxhash::FxHashSet<_>>(),
         );
@@ -249,5 +321,44 @@ mod tests {
         let expected: MrdtSet<(char, char)> = MrdtSet::from(fxhash::FxHashSet::default());
 
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_merge_with_complex_scenario() {
+        // Create LCA
+        let mut lca = MrdtOrd::default();
+        lca.insert(0, 1);
+        lca.insert(1, 2);
+        lca.insert(2, 3);
+
+        // Create Left
+        let mut left = MrdtOrd::default();
+        left.insert(0, 1);
+        left.insert(1, 2);
+        left.insert(2, 3);
+        left.insert(3, 4);
+
+        // Create Right
+        let mut right = MrdtOrd::default();
+        right.insert(0, 1);
+        right.insert(1, 3);
+
+        // Create merged_mem
+        let mut merged_mem = MrdtSet::default();
+        merged_mem.insert(1);
+        merged_mem.insert(3);
+        merged_mem.insert(4);
+
+        // Perform merge
+        let result = MrdtOrd::merge(&lca, &left, &right, &merged_mem);
+
+        dbg!(&result);
+
+        // Check the result
+        assert_eq!(result.len(), 3);
+        assert_eq!(result.index_of(&1), Some(0));
+        assert_eq!(result.index_of(&3), Some(1));
+        assert_eq!(result.index_of(&4), Some(2));
+        assert_eq!(result.index_of(&2), None);
     }
 }
