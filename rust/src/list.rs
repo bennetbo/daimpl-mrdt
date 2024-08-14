@@ -92,7 +92,7 @@ impl<T: MrdtItem> Index<usize> for MrdtList<T> {
     }
 }
 
-impl<T: MrdtItem> Mergeable<MrdtList<T>> for MrdtList<T> {
+impl<T: MrdtItem + Ord> Mergeable<MrdtList<T>> for MrdtList<T> {
     fn merge(lca: &MrdtList<T>, left: &MrdtList<T>, right: &MrdtList<T>) -> MrdtList<T> {
         let mem = MrdtSet::merge(&lca.mem, &left.mem, &right.mem);
         let ord = MrdtOrd::merge(&lca.ord, &left.ord, &right.ord, &mem);

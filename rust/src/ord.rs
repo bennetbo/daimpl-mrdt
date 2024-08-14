@@ -77,7 +77,7 @@ impl<T: MrdtItem> MrdtOrd<T> {
     }
 }
 
-impl<T: MrdtItem> MrdtOrd<T> {
+impl<T: MrdtItem + Ord> MrdtOrd<T> {
     pub fn merge(lca: &Self, left: &Self, right: &Self, merged_mem: &MrdtSet<T>) -> Self {
         let left = map_to_ordering(&left.store);
         let right = map_to_ordering(&right.store);
@@ -106,7 +106,7 @@ impl<T: MrdtItem> Default for MrdtOrd<T> {
     }
 }
 
-fn ordering_to_hashmap<T: Eq + Clone + std::hash::Hash>(
+fn ordering_to_hashmap<T: Ord + Clone + std::hash::Hash>(
     ordering: &fxhash::FxHashSet<(T, T)>,
 ) -> fxhash::FxHashMap<T, usize> {
     use std::cmp::Reverse;
@@ -177,7 +177,6 @@ fn map_to_ordering<T: MrdtItem>(ordering: &fxhash::FxHashMap<T, usize>) -> MrdtS
     for (i, (value, _)) in sorted_items.iter().enumerate() {
         for (value2, _) in &sorted_items[i + 1..] {
             ordered_set.insert(((*value).clone(), (*value2).clone()));
-            break;
         }
     }
 
@@ -233,7 +232,7 @@ mod tests {
         let result = map_to_ordering(&ordering);
 
         let expected: MrdtSet<(char, char)> = MrdtSet::from(
-            vec![('a', 'b'), ('b', 'c')]
+            vec![('a', 'b'), ('a', 'c'), ('b', 'c')]
                 .into_iter()
                 .collect::<fxhash::FxHashSet<_>>(),
         );
