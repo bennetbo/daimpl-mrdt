@@ -61,6 +61,12 @@ impl<T: MrdtItem> MrdtSet<T> {
     pub fn remove(&mut self, value: &T) {
         self.store.remove(value);
     }
+
+    pub fn union(&self, other: &Self) -> Self {
+        Self {
+            store: self.store.union(&other.store).cloned().collect(),
+        }
+    }
 }
 
 impl<T: MrdtItem> Mergeable<MrdtSet<T>> for MrdtSet<T> {
