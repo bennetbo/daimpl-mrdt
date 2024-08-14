@@ -158,16 +158,6 @@ impl<T: MrdtItem + Ord> MrdtOrd<T> {
             }
         }
         Self { store: merged_set }
-        // let mut merged = merged_ord.clone();
-        // for (k, v) in merged_ord.iter() {
-        //     if !merged_mem.contains(k) || !merged_mem.contains(v) {
-        //         merged.remove(&(k.clone(), v.clone()));
-        //     }
-        // }
-
-        // Self {
-        //     store: ordering_to_hashmap(&merged.store),
-        // }
     }
 }
 
@@ -177,69 +167,6 @@ impl<T: MrdtItem> Default for MrdtOrd<T> {
             store: fxhash::FxHashMap::default(),
         }
     }
-}
-
-fn ordering_to_hashmap<T: Ord + Clone + std::hash::Hash>(
-    ordering: &fxhash::FxHashSet<(T, T)>,
-) -> fxhash::FxHashMap<T, usize> {
-    use std::cmp::Reverse;
-    use std::collections::BinaryHeap;
-
-    // Define auxiliary structures
-    let nodes: fxhash::FxHashSet<T> = ordering
-        .iter()
-        .flat_map(|(a, b)| vec![a.clone(), b.clone()])
-        .collect();
-
-    let mut adjacency_list: fxhash::FxHashMap<T, Vec<T>> = fxhash::FxHashMap::default();
-    let mut in_degree: fxhash::FxHashMap<T, usize> = fxhash::FxHashMap::default();
-
-    for (from, to) in ordering {
-        adjacency_list
-            .entry(from.clone())
-            .or_default()
-            .push(to.clone());
-
-        *in_degree.entry(to.clone()).or_insert(0) += 1;
-        in_degree.entry(from.clone()).or_insert(0);
-    }
-
-    for (_k, v) in adjacency_list.iter_mut() {
-        v.sort();
-    }
-
-    // Priority Queue for maintaining lexical order among available nodes
-    let mut queue: BinaryHeap<Reverse<T>> = BinaryHeap::new();
-
-    // Enqueue nodes with no in-degrees
-    for node in &nodes {
-        if *in_degree.get(node).unwrap() == 0 {
-            queue.push(Reverse(node.clone()));
-        }
-    }
-
-    let mut result = Vec::new();
-
-    while let Some(Reverse(current)) = queue.pop() {
-        result.push(current.clone());
-
-        if let Some(neighbors) = adjacency_list.get(&current) {
-            for neighbor in neighbors {
-                let in_deg = in_degree.get_mut(neighbor).unwrap();
-                *in_deg -= 1;
-
-                if *in_deg == 0 {
-                    queue.push(Reverse(neighbor.clone()));
-                }
-            }
-        }
-    }
-
-    let mut map = fxhash::FxHashMap::default();
-    for (idx, value) in result.into_iter().enumerate() {
-        map.insert(value, idx);
-    }
-    map
 }
 
 fn map_to_ordering<T: MrdtItem>(ordering: &fxhash::FxHashMap<T, usize>) -> MrdtSet<(T, T)> {
@@ -258,41 +185,6 @@ fn map_to_ordering<T: MrdtItem>(ordering: &fxhash::FxHashMap<T, usize>) -> MrdtS
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_ordering_to_hashmap() {
-        let mut ordering = fxhash::FxHashSet::default();
-        ordering.insert(('a', 'b'));
-        ordering.insert(('b', 'c'));
-        ordering.insert(('a', 'c'));
-
-        let result = ordering_to_hashmap(&ordering);
-
-        let expected: fxhash::FxHashMap<char, usize> =
-            [('a', 0), ('b', 1), ('c', 2)].iter().cloned().collect();
-
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn test_ordering_with_cycle() {
-        let mut ordering = fxhash::FxHashSet::default();
-        ordering.insert(('a', 'b'));
-        ordering.insert(('b', 'c'));
-        ordering.insert(('c', 'a'));
-
-        let result = ordering_to_hashmap(&ordering);
-        // In case of cycle detection, we return an empty map
-        assert!(result.is_empty());
-    }
-
-    #[test]
-    fn test_ordering_with_single_node() {
-        let ordering = fxhash::FxHashSet::default();
-        let result = ordering_to_hashmap(&ordering);
-        let expected: fxhash::FxHashMap<char, usize> = fxhash::FxHashMap::default();
-        assert_eq!(result, expected);
-    }
 
     #[test]
     fn test_map_to_ordering() {
