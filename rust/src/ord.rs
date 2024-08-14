@@ -109,7 +109,14 @@ impl<T: MrdtItem> Default for MrdtOrd<T> {
 fn ordering_to_hashmap<T: Eq + Clone + std::hash::Hash>(
     ordering: &fxhash::FxHashSet<(T, T)>,
 ) -> fxhash::FxHashMap<T, usize> {
-    use std::collections::VecDeque;
+    use std::cmp::Reverse;
+    use std::collections::BinaryHeap;
+
+    // Define auxiliary structures
+    let nodes: fxhash::FxHashSet<T> = ordering
+        .iter()
+        .flat_map(|(a, b)| vec![a.clone(), b.clone()])
+        .collect();
 
     let mut adjacency_list: fxhash::FxHashMap<T, Vec<T>> = fxhash::FxHashMap::default();
     let mut in_degree: fxhash::FxHashMap<T, usize> = fxhash::FxHashMap::default();
@@ -119,19 +126,28 @@ fn ordering_to_hashmap<T: Eq + Clone + std::hash::Hash>(
             .entry(from.clone())
             .or_default()
             .push(to.clone());
+
         *in_degree.entry(to.clone()).or_insert(0) += 1;
         in_degree.entry(from.clone()).or_insert(0);
     }
 
-    let mut queue: VecDeque<T> = in_degree
-        .iter()
-        .filter(|(_, &degree)| degree == 0)
-        .map(|(node, _)| node.clone())
-        .collect();
+    for (_k, v) in adjacency_list.iter_mut() {
+        v.sort();
+    }
+
+    // Priority Queue for maintaining lexical order among available nodes
+    let mut queue: BinaryHeap<Reverse<T>> = BinaryHeap::new();
+
+    // Enqueue nodes with no in-degrees
+    for node in &nodes {
+        if *in_degree.get(node).unwrap() == 0 {
+            queue.push(Reverse(node.clone()));
+        }
+    }
 
     let mut result = Vec::new();
 
-    while let Some(current) = queue.pop_front() {
+    while let Some(Reverse(current)) = queue.pop() {
         result.push(current.clone());
 
         if let Some(neighbors) = adjacency_list.get(&current) {
@@ -140,17 +156,17 @@ fn ordering_to_hashmap<T: Eq + Clone + std::hash::Hash>(
                 *in_deg -= 1;
 
                 if *in_deg == 0 {
-                    queue.push_back(neighbor.clone());
+                    queue.push(Reverse(neighbor.clone()));
                 }
             }
         }
     }
 
-    result
-        .into_iter()
-        .enumerate()
-        .map(|(idx, value)| (value, idx))
-        .collect()
+    let mut map = fxhash::FxHashMap::default();
+    for (idx, value) in result.into_iter().enumerate() {
+        map.insert(value, idx);
+    }
+    map
 }
 
 fn map_to_ordering<T: MrdtItem>(ordering: &fxhash::FxHashMap<T, usize>) -> MrdtSet<(T, T)> {
