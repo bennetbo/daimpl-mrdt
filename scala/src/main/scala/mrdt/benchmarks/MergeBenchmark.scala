@@ -13,8 +13,7 @@ import scala.util.Random
 @Fork(1)
 @Threads(1)
 @State(Scope.Thread)
-// I would like to rename this but jmh won't let me'
-class MyBenchmark {
+class MergeBenchmark {
   @Param(Array("10", "100", "1000"))
   var lcaSize: Int = scala.compiletime.uninitialized
 

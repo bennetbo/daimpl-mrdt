@@ -50,3 +50,27 @@ TODO:
 - Ob set immutable set faster?
 - Construct Ob sets early and do set merge only
 - Find out how merging works in Ocaml implementation
+
+---
+
+Meet Aug 8
+Status & open questions:
+- Ob set is still slow
+  - (n - 1) * n / 2 elements, n = 10000 -> 50 mio elements to merge
+  - Unclear how they designed it to be fast
+  - Potentially use toposort and decrease size of set, however this is not how it's done in the paper
+    - Problems with deleted elements, we would need to re-connect them manually
+  - Try toposort!
+- Paper about Quark Store: RunTime-Assisted Convergence in Replicated Data Types
+  - Replica -> Commit
+  - Commit -> Root object, object points to previous object, essentially a linked list
+    - Resolve complete state by traversing the linked list
+    - A lot of database queries?
+      - For example, a document with 10000 characters where each character is a node would need 30000 queries to be resolved
+      - And then we still need to merge...
+- Blog post details
+  - Agenda
+    - Motivation
+    - What have we done? What code have we written
+    - Findings - Cite
+      - Inconsistencies

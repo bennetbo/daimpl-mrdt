@@ -88,7 +88,7 @@ async fn main() -> Result<()> {
         stores.push(Some(store));
     }
 
-    let mut base_store = stores[0].take().unwrap();
+    let base_store = stores[0].take().unwrap();
     // TODO: It is unclear how to handle different replicas without a "common" ancestor, we start
     // by manually establishing a base commit
     let main_replica = Id::gen();

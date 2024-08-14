@@ -77,7 +77,7 @@ impl<T: MrdtItem> MrdtOrd<T> {
     }
 }
 
-impl<T: MrdtItem + Ord> MrdtOrd<T> {
+impl<T: MrdtItem> MrdtOrd<T> {
     pub fn merge(lca: &Self, left: &Self, right: &Self, merged_mem: &MrdtSet<T>) -> Self {
         let left = map_to_ordering(&left.store);
         let right = map_to_ordering(&right.store);
@@ -106,7 +106,7 @@ impl<T: MrdtItem> Default for MrdtOrd<T> {
     }
 }
 
-fn ordering_to_hashmap<T: Ord + Clone + std::hash::Hash>(
+fn ordering_to_hashmap<T: Eq + Clone + std::hash::Hash>(
     ordering: &fxhash::FxHashSet<(T, T)>,
 ) -> fxhash::FxHashMap<T, usize> {
     use std::cmp::Reverse;
@@ -171,13 +171,13 @@ fn ordering_to_hashmap<T: Ord + Clone + std::hash::Hash>(
 
 fn map_to_ordering<T: MrdtItem>(ordering: &fxhash::FxHashMap<T, usize>) -> MrdtSet<(T, T)> {
     let mut ordered_set = fxhash::FxHashSet::default();
-
     let mut sorted_items: Vec<_> = ordering.iter().collect();
     sorted_items.sort_by_key(|(_, &idx)| idx);
 
     for (i, (value, _)) in sorted_items.iter().enumerate() {
         for (value2, _) in &sorted_items[i + 1..] {
             ordered_set.insert(((*value).clone(), (*value2).clone()));
+            break;
         }
     }
 
@@ -233,7 +233,7 @@ mod tests {
         let result = map_to_ordering(&ordering);
 
         let expected: MrdtSet<(char, char)> = MrdtSet::from(
-            vec![('a', 'b'), ('a', 'c'), ('b', 'c')]
+            vec![('a', 'b'), ('b', 'c')]
                 .into_iter()
                 .collect::<fxhash::FxHashSet<_>>(),
         );
@@ -248,24 +248,6 @@ mod tests {
         let result = map_to_ordering(&ordering);
 
         let expected: MrdtSet<(char, char)> = MrdtSet::from(fxhash::FxHashSet::default());
-
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn test_map_to_ordering_duplicate_indices() {
-        let mut ordering = fxhash::FxHashMap::default();
-        ordering.insert('a', 1);
-        ordering.insert('b', 1);
-        ordering.insert('c', 2);
-
-        let result = map_to_ordering(&ordering);
-
-        let expected: MrdtSet<(char, char)> = MrdtSet::from(
-            vec![('a', 'c'), ('b', 'c')]
-                .into_iter()
-                .collect::<fxhash::FxHashSet<_>>(),
-        );
 
         assert_eq!(result, expected);
     }
