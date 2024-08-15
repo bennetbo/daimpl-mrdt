@@ -77,16 +77,6 @@ impl<T: MrdtItem> MrdtOrd<T> {
     }
 }
 
-// left: (1, 2), (2, 3), (3, 4)
-// right: (1, 3)
-// lca: (1, 2), (2, 3)
-//
-// union: (1, 2), (1, 3), (2, 3), (3, 4)
-// toposort:
-//  1 -> 2 -> 3 -> 4
-//    ------>
-// Intersect with memset: 1 -> 3 -> 4
-
 pub fn toposort<T: MrdtItem + Ord>(pairs: &MrdtSet<(T, T)>) -> Vec<T> {
     use std::cmp::Reverse;
     use std::collections::{BinaryHeap, HashMap, HashSet};
@@ -149,12 +139,9 @@ impl<T: MrdtItem + Ord> MrdtOrd<T> {
         let set = toposort(&union);
 
         let mut merged_set = fxhash::FxHashMap::default();
-        let mut deleted_elements = 0;
-        for (idx, value) in set.iter().enumerate() {
+        for value in set.iter() {
             if merged_mem.contains(value) {
-                merged_set.insert(value.clone(), idx - deleted_elements);
-            } else {
-                deleted_elements += 1;
+                merged_set.insert(value.clone(), merged_set.len());
             }
         }
         Self { store: merged_set }

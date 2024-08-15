@@ -8,60 +8,49 @@ object Utils {
   def mapToOrdering[A: Ordering](
       ordering: HashMap[A, Int]
   ): Set[(A, A)] = {
-    ordering.foldLeft(Set.empty[(A, A)]) { case (acc, (value1, idx1)) =>
-      ordering.foldLeft(acc) { case (innerAcc, (value2, idx2)) =>
-        if (idx1 < idx2) innerAcc + ((value1, value2))
-        else innerAcc
-      }
+    val sortedItems = ordering.toList.sortBy(_._2)
+    sortedItems.sliding(2).foldLeft(Set.empty[(A, A)]) {
+      case (acc, List((prevValue, _), (currValue, _))) =>
+        acc + ((prevValue, currValue))
     }
   }
 
-  def orderingToHashMap[A: Ordering](
-      ordering: Set[(A, A)]
-  ): HashMap[A, Int] = {
-    implicit val ord: Ordering[List[A]] = Ordering.Implicits.seqOrdering
+  def toposort[T: Ordering](
+      pairs: Set[(T, T)]
+  ): List[T] = {
+    val graph =
+      scala.collection.mutable.Map[T, List[T]]().withDefaultValue(List.empty)
+    val inDegree = scala.collection.mutable.Map[T, Int]().withDefaultValue(0)
+    val allNodes = pairs.flatMap { case (from, to) => Set(from, to) }
 
-    // Prepare auxiliary structures
-    val nodes: Set[A] =
-      ordering
-        .flatMap(pair => List(pair._1, pair._2))
-        .toSet
-    val adjacencyList =
-      scala.collection.mutable.Map.empty[A, List[A]].withDefaultValue(Nil)
-    val inDegree =
-      scala.collection.mutable.Map.empty[A, Int].withDefaultValue(0)
-
-    // Prepare adjacency list and in-degree count
-    ordering.foreach { case (from, to) =>
-      adjacencyList(from) =
-        (adjacencyList(from) :+ to).sorted // Keep lists sorted
-      inDegree(to) = inDegree(to) + 1
+    // Build the graph and calculate in-degrees
+    pairs.foreach { case (from, to) =>
+      graph(from) = graph(from) :+ to
+      inDegree(to) += 1
     }
 
-    // Priority Queue for maintaining lexical order among available nodes
-    val queue = scala.collection.mutable.PriorityQueue
-      .empty[A](implicitly[Ordering[A]].reverse)
+    // Use a PriorityQueue as a min-heap based on (in-degree, node value)
+    val queue = scala.collection.mutable.PriorityQueue[(Int, T)]().reverse
+    allNodes.foreach(node => queue.enqueue((inDegree(node), node)))
 
-    // Enqueue nodes with no in-degrees
-    nodes.filter(inDegree(_) == 0).foreach(queue.enqueue(_))
-
-    var result = List.empty[A]
+    val result = scala.collection.mutable.ListBuffer[T]()
+    val processed = scala.collection.mutable.Set[T]()
 
     while (queue.nonEmpty) {
-      val current = queue.dequeue()
-      result = result :+ current
+      val (_, node) = queue.dequeue()
+      if (!processed.contains(node)) {
+        result += node
+        processed += node
 
-      adjacencyList(current).foreach { neighbor =>
-        inDegree(neighbor) -= 1
-        if (inDegree(neighbor) == 0) {
-          queue.enqueue(neighbor)
+        graph(node).foreach { neighbor =>
+          if (!processed.contains(neighbor)) {
+            inDegree(neighbor) -= 1
+            queue.enqueue((inDegree(neighbor), neighbor))
+          }
         }
       }
     }
 
-    result.zipWithIndex.foldLeft(HashMap.empty[A, Int]) {
-      case (map, (value, idx)) =>
-        map + (value -> idx)
-    }
+    result.toList
   }
 }

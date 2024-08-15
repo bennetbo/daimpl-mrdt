@@ -40,17 +40,20 @@ class MrdtOrd[A: Ordering](val store: HashMap[A, Int])
       replica2: MrdtOrd[A],
       mergedMem: MrdtSet[A]
   ): MrdtOrd[A] = {
-    val mergeOrd =
-      this.toOrderedSet.merge(replica1.toOrderedSet, replica2.toOrderedSet)
+    val lcaOrdering = Utils.mapToOrdering(this.store)
+    val leftOrdering = Utils.mapToOrdering(replica1.store)
+    val rightOrdering = Utils.mapToOrdering(replica2.store)
 
-    val mergeOrdSet = mergeOrd.asSet
-    val filteredOrdSet = mergeOrdSet.filter { pair =>
-      mergedMem.contains(pair._1) && mergedMem.contains(pair._2)
+    val union = leftOrdering ++ rightOrdering ++ lcaOrdering
+
+    val set = Utils.toposort(union)
+
+    val mergedSet = set.zipWithIndex.foldLeft(HashMap.empty[A, Int]) { case (acc, (value, idx)) =>
+      if (mergedMem.contains(value)) acc + (value -> acc.size)
+      else acc
     }
 
-    val ordering = Utils.orderingToHashMap(filteredOrdSet)
-
-    new MrdtOrd[A](ordering)
+    MrdtOrd(mergedSet)
   }
 
   def iterator: Iterator[(A, Int)] = store.iterator

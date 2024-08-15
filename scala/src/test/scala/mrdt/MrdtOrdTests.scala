@@ -27,9 +27,8 @@ class MrdtOrdTests extends AnyFunSuite {
 
     val set = ord.toOrderedSet
 
-    assert(set.size === 3)
+    assert(set.size === 2)
     assert(set.contains((1, 2)))
-    assert(set.contains((1, 3)))
     assert(set.contains((2, 3)))
   }
 }
