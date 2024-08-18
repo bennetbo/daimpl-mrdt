@@ -1,8 +1,4 @@
-use musli::{
-    options::{ByteOrder, Integer},
-    storage::Encoding,
-    Options,
-};
+use musli::{storage::Encoding, Options};
 pub use object_store::*;
 pub use ref_store::*;
 
@@ -13,10 +9,7 @@ pub use super::*;
 
 use scylla::{query::Query, serialize::row::SerializeRow, QueryResult, Session, SessionBuilder};
 
-const OPTIONS: Options = musli::options::new()
-    .with_integer(Integer::Fixed)
-    .with_byte_order(ByteOrder::NATIVE)
-    .build();
+const OPTIONS: Options = musli::options::new().build();
 
 const ENCODING: Encoding<OPTIONS> = Encoding::new().with_options();
 
