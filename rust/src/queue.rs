@@ -60,6 +60,20 @@ impl<T: MrdtItem + Ord + std::fmt::Debug> Mergeable<MrdtQueue<T>> for MrdtQueue<
         Self { store }
     }
 }
+
+impl<T: MrdtItem> Serialize for MrdtQueue<T> {
+    async fn serialize(&self, cx: SerializeCx<'_>) -> Result<Vec<Ref>> {
+        self.store.serialize(cx).await
+    }
+}
+
+impl<T: MrdtItem> Deserialize for MrdtQueue<T> {
+    async fn deserialize(root: Ref, cx: DeserializeCx<'_>) -> Result<Self> {
+        let store = MrdtList::deserialize(root, cx).await?;
+        Ok(Self { store })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

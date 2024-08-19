@@ -69,6 +69,23 @@ impl<T: MrdtItem> MrdtSet<T> {
     }
 }
 
+impl<T: MrdtItem> Serialize for MrdtSet<T> {
+    async fn serialize(&self, cx: SerializeCx<'_>) -> Result<Vec<Ref>> {
+        cx.serialize_iter(self.store.iter()).await
+    }
+}
+
+impl<T: MrdtItem> Deserialize for MrdtSet<T> {
+    async fn deserialize(root: Ref, cx: DeserializeCx<'_>) -> Result<Self> {
+        let items = cx.deserialize_iter(root).await?;
+        let mut store = fxhash::FxHashSet::default();
+        for item in items {
+            store.insert(item);
+        }
+        Ok(Self { store })
+    }
+}
+
 impl<T: MrdtItem> Mergeable<MrdtSet<T>> for MrdtSet<T> {
     fn merge(lca: &MrdtSet<T>, left: &MrdtSet<T>, right: &MrdtSet<T>) -> MrdtSet<T> {
         merge_sets(lca, left, right)

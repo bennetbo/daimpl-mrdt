@@ -99,6 +99,26 @@ impl<T: MrdtItem + Ord> Mergeable<MrdtList<T>> for MrdtList<T> {
         Self { mem, ord }
     }
 }
+
+impl<T: MrdtItem> Serialize for MrdtList<T> {
+    async fn serialize(&self, cx: SerializeCx<'_>) -> Result<Vec<Ref>> {
+        cx.serialize_iter(self.ord().iter()).await
+    }
+}
+
+impl<T: MrdtItem> Deserialize for MrdtList<T> {
+    async fn deserialize(root: Ref, cx: DeserializeCx<'_>) -> Result<Self> {
+        let items: Vec<T> = cx.deserialize_iter(root).await?;
+        let mut mem = MrdtSet::default();
+        let mut ord = MrdtOrd::default();
+        for (i, item) in items.into_iter().enumerate() {
+            mem.insert(item.clone());
+            ord.insert(i, item);
+        }
+        Ok(Self { mem, ord })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

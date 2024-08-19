@@ -75,6 +75,19 @@ impl Mergeable<Document> for Document {
     }
 }
 
+impl Serialize for Document {
+    async fn serialize(&self, cx: SerializeCx<'_>) -> Result<Vec<Ref>> {
+        self.contents.serialize(cx).await
+    }
+}
+
+impl Deserialize for Document {
+    async fn deserialize(root: Ref, cx: DeserializeCx<'_>) -> Result<Self> {
+        let contents = MrdtList::deserialize(root, cx).await?;
+        Ok(Self { contents })
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     const INITIAL_TEXT: &str = "-";
@@ -84,7 +97,7 @@ async fn main() -> Result<()> {
     println!("Setting up datastores...");
     let mut stores = Vec::with_capacity(REPLICAS);
     for _ in 0..REPLICAS + 1 {
-        let store = setup_store(hostname.clone(), "test").await.unwrap();
+        let store = Store::setup(hostname.clone(), "test").await.unwrap();
         stores.push(Some(store));
     }
 
@@ -93,7 +106,7 @@ async fn main() -> Result<()> {
     // by manually establishing a base commit
     let main_replica = Id::gen();
     let base_set_ref = base_store
-        .insert(&Document::from_str(INITIAL_TEXT))
+        .insert_versioned(&Document::from_str(INITIAL_TEXT))
         .await
         .unwrap();
     let _base_commit = base_store
@@ -124,7 +137,7 @@ async fn main() -> Result<()> {
                 .merge_with::<Document>(replica_ids[merge_with_replica_ix])
                 .await
                 .unwrap();
-            let mut document: Document = replica.latest_object().await.unwrap();
+            let mut document: Document = replica.latest_object().await.unwrap().unwrap();
 
             let mut rng = rand::thread_rng();
             let char = (replica_ix as u8 + b'a') as char;
@@ -147,7 +160,7 @@ async fn main() -> Result<()> {
 
     let mut document_contents = Vec::with_capacity(REPLICAS);
     for replica in replicas.iter_mut() {
-        let document: Document = replica.latest_object().await.unwrap();
+        let document: Document = replica.latest_object().await.unwrap().unwrap();
         document_contents.push(document.to_string());
     }
 
@@ -158,7 +171,7 @@ async fn main() -> Result<()> {
     }
 
     let replica = replicas.iter_mut().next().unwrap();
-    let document: Document = replica.latest_object().await.unwrap();
+    let document: Document = replica.latest_object().await.unwrap().unwrap();
     let text = document.to_string();
 
     assert_eq!(

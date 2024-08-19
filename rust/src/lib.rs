@@ -4,7 +4,7 @@ pub mod quark;
 pub mod queue;
 pub mod replica;
 pub mod set;
-pub mod storage;
+// pub mod storage;
 pub mod vector_clock;
 
 pub use anyhow::{Context, Result};
@@ -12,9 +12,10 @@ use musli::{
     mode::{Binary, Text},
     Decode, Encode,
 };
+pub use quark::*;
 pub use replica::*;
 pub use set::*;
-pub use storage::*;
+// pub use storage::*;
 pub use vector_clock::*;
 
 pub trait MrdtItem:
