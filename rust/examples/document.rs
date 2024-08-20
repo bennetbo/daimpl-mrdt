@@ -90,6 +90,8 @@ impl Deserialize for Document {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    env_logger::init();
+
     const INITIAL_TEXT: &str = "-";
 
     let hostname = std::env::var("SCYLLA_URL").unwrap_or_else(|_| "127.0.0.1:9042".to_string());

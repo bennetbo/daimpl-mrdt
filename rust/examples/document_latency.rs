@@ -115,6 +115,8 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    env_logger::init();
+
     let args = Args::parse();
     let hostname = std::env::var("SCYLLA_URL").unwrap_or_else(|_| "127.0.0.1:9042".to_string());
 

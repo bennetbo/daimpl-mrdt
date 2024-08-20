@@ -21,6 +21,8 @@ impl Person {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    env_logger::init();
+
     let hostname = env::var("SCYLLA_URL").unwrap_or_else(|_| "127.0.0.1:9042".to_string());
 
     let base_store = Store::setup(hostname.clone(), "test").await.unwrap();

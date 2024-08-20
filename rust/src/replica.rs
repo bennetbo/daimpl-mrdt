@@ -1,3 +1,5 @@
+use std::fmt;
+
 use super::*;
 
 pub type ReplicaId = Id;
@@ -39,14 +41,14 @@ impl Replica {
     }
 
     /// Resolves and returns the object of the lastest commit from the store.
-    pub async fn latest_object<T: Deserialize>(&self) -> Result<Option<T>> {
+    pub async fn latest_object<T: Deserialize + fmt::Debug>(&self) -> Result<Option<T>> {
         self.store
             .resolve_versioned(self.latest_commit.root_ref)
             .await
     }
 
     /// Commits the given object to the store and returns the resulting commit.
-    pub async fn commit_object<T: Serialize>(&mut self, object: &T) -> Result<Commit> {
+    pub async fn commit_object<T: Serialize + fmt::Debug>(&mut self, object: &T) -> Result<Commit> {
         let object_ref = self.store.insert_versioned(object).await?;
         self.commit(object_ref, self.next_version()).await
     }
@@ -59,7 +61,7 @@ impl Replica {
     }
 
     /// Merges the current replica's state with another replica and commits the merged object.
-    pub async fn merge_with<T: Serialize + Deserialize + Mergeable<T>>(
+    pub async fn merge_with<T: Serialize + Deserialize + Mergeable<T> + fmt::Debug>(
         &mut self,
         other_replica: ReplicaId,
     ) -> Result<Commit> {

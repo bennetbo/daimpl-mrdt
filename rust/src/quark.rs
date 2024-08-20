@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use log::log_enabled;
 use musli::{
     de::DecodeOwned,
     mode::Binary,
@@ -6,6 +7,7 @@ use musli::{
     Encode,
 };
 use scylla::{query::Query, serialize::row::SerializeRow, QueryResult, Session, SessionBuilder};
+use std::fmt;
 use std::hash::{Hash, Hasher};
 
 #[cfg(test)]
@@ -104,12 +106,13 @@ pub trait ObjectStore {
 
 #[allow(async_fn_in_trait)]
 pub trait VersionedStore {
-    async fn resolve_versioned<T: Deserialize>(&self, root: u64) -> Result<Option<T>>;
-    async fn insert_versioned<T: Serialize>(&self, object: &T) -> Result<u64>;
+    async fn resolve_versioned<T: Deserialize + fmt::Debug>(&self, root: u64) -> Result<Option<T>>;
+    async fn insert_versioned<T: Serialize + fmt::Debug>(&self, object: &T) -> Result<u64>;
 }
 
 impl GitLikeStore for Store {
     async fn clone(&self, replica_id: ReplicaId) -> Result<Commit> {
+        log::debug!("Cloning replica {replica_id}");
         match self {
             Store::Scylla(session) => {
                 let commit_table = session.table_name(COMMIT_TABLE_NAME);
@@ -155,6 +158,9 @@ impl GitLikeStore for Store {
         version: VectorClock,
         root_ref: u64,
     ) -> Result<Commit> {
+        log::debug!(
+            "Replica {replica_id} adding new commit. Ref: {root_ref}, Version: {version:?}"
+        );
         match self {
             Store::Scylla(session) => {
                 let commit_table = session.table_name(COMMIT_TABLE_NAME);
@@ -587,18 +593,28 @@ impl ObjectStore for Store {
 }
 
 impl VersionedStore for Store {
-    async fn resolve_versioned<T: Deserialize>(&self, root: u64) -> Result<Option<T>> {
+    async fn resolve_versioned<T: Deserialize + fmt::Debug>(&self, root: u64) -> Result<Option<T>> {
+        log::debug!("Resolving object with root id {root}");
         let Some(root) = self.resolve_ref(Some(root)).await? else {
             return Ok(None);
         };
         let cx = DeserializeCx { store: self };
         let result = T::deserialize(root, cx).await?;
+        if log_enabled!(log::Level::Debug) {
+            log::debug!("Got object: {result:?}");
+        }
         Ok(Some(result))
     }
 
-    async fn insert_versioned<T: Serialize>(&self, object: &T) -> Result<u64> {
+    async fn insert_versioned<T: Serialize + fmt::Debug>(&self, object: &T) -> Result<u64> {
+        if log_enabled!(log::Level::Debug) {
+            log::debug!("Inserting object: {object:?}");
+        }
         let cx = SerializeCx { store: self };
         let references = object.serialize(cx).await?;
+        if log_enabled!(log::Level::Debug) {
+            log::debug!("References: {references:?}");
+        }
 
         let root_ref_id = references.last().with_context(|| "Structure is empty")?.id;
 
@@ -639,7 +655,7 @@ pub struct SerializeCx<'a> {
 }
 
 impl SerializeCx<'_> {
-    pub async fn insert<T: Hash + Encode<Binary>>(&self, object: &T) -> Result<u64> {
+    pub async fn insert_object<T: Hash + Encode<Binary>>(&self, object: &T) -> Result<u64> {
         self.store.insert_object(object).await
     }
 
@@ -657,7 +673,7 @@ impl SerializeCx<'_> {
             }
             let hash = hasher.finish();
 
-            let object_ref = self.insert(object).await?;
+            let object_ref = self.insert_object(object).await?;
             refs.push(Ref {
                 id: hash,
                 left: prev_hash,
@@ -740,7 +756,7 @@ mod tests {
                 }
                 let hash = hasher.finish();
 
-                let object_ref = cx.insert(object).await?;
+                let object_ref = cx.insert_object(object).await?;
                 refs.push(Ref {
                     id: hash,
                     left: prev_hash,
