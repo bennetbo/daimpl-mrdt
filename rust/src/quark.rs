@@ -7,8 +7,8 @@ use musli::{
     Encode,
 };
 use scylla::{query::Query, serialize::row::SerializeRow, QueryResult, Session, SessionBuilder};
-use std::fmt;
 use std::hash::{Hash, Hasher};
+use std::{fmt, time::Instant};
 
 #[cfg(test)]
 use std::{cell::RefCell, collections::HashMap};
@@ -594,6 +594,10 @@ impl ObjectStore for Store {
 
 impl VersionedStore for Store {
     async fn resolve_versioned<T: Deserialize + fmt::Debug>(&self, root: u64) -> Result<Option<T>> {
+        let mut instant = None;
+        if log_enabled!(log::Level::Debug) {
+            instant = Some(Instant::now());
+        }
         log::debug!("Resolving object with root id {root}");
         let Some(root) = self.resolve_ref(Some(root)).await? else {
             return Ok(None);
@@ -601,24 +605,25 @@ impl VersionedStore for Store {
         let cx = DeserializeCx { store: self };
         let result = T::deserialize(root, cx).await?;
         if log_enabled!(log::Level::Debug) {
-            log::debug!("Got object: {result:?}");
+            if let Some(elapsed) = instant.map(|i| i.elapsed()) {
+                log::debug!("Resolving object took {} ms", elapsed.as_millis());
+            }
         }
         Ok(Some(result))
     }
 
     async fn insert_versioned<T: Serialize + fmt::Debug>(&self, object: &T) -> Result<u64> {
+        let mut instant = None;
         if log_enabled!(log::Level::Debug) {
-            log::debug!("Inserting object: {object:?}");
+            instant = Some(Instant::now());
         }
         let cx = SerializeCx { store: self };
         let references = object.serialize(cx).await?;
-        if log_enabled!(log::Level::Debug) {
-            log::debug!("References: {references:?}");
-        }
+        log::debug!("Inserting object with {} references", references.len());
 
         let root_ref_id = references.last().with_context(|| "Structure is empty")?.id;
 
-        match self {
+        let root_ref = match self {
             Store::Scylla(session) => {
                 let ref_table_name = session.table_name(REF_TABLE_NAME);
                 let query = format!("INSERT INTO {ref_table_name} (id, left, right, object_ref) VALUES (?, ?, ?, ?)");
@@ -636,7 +641,7 @@ impl VersionedStore for Store {
                         .await?;
                 }
 
-                Ok(root_ref_id)
+                root_ref_id
             }
             #[cfg(test)]
             Store::Fake { refs, .. } => {
@@ -644,9 +649,17 @@ impl VersionedStore for Store {
                 for reference in references {
                     refs.insert(reference.id, reference);
                 }
-                Ok(root_ref_id)
+                root_ref_id
+            }
+        };
+
+        if log_enabled!(log::Level::Debug) {
+            if let Some(elapsed) = instant.map(|i| i.elapsed()) {
+                log::debug!("Inserting object took {} ms", elapsed.as_millis());
             }
         }
+
+        Ok(root_ref)
     }
 }
 
