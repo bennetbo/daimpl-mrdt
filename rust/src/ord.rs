@@ -144,6 +144,10 @@ impl<T: MrdtItem + Ord> MrdtOrd<T> {
                 merged_set.insert(value.clone(), merged_set.len());
             }
         }
+        //HACK: if we only have one element, the mathematical representation will be empty, but in our representation we need a single element
+        if set.len() == 0 && merged_mem.len() == 1 {
+            merged_set.insert(merged_mem.iter().next().unwrap().clone(), 0);
+        }
         Self { store: merged_set }
     }
 }
@@ -200,6 +204,34 @@ mod tests {
         let expected: MrdtSet<(char, char)> = MrdtSet::from(fxhash::FxHashSet::default());
 
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_merge_simple() {
+        // Create LCA
+        let mut lca = MrdtOrd::default();
+        lca.insert(0, 1);
+
+        // Create Left
+        let mut left = MrdtOrd::default();
+        left.insert(0, 1);
+
+        // Create Right
+        let mut right = MrdtOrd::default();
+        right.insert(0, 1);
+
+        // Create merged_mem
+        let mut merged_mem = MrdtSet::default();
+        merged_mem.insert(1);
+
+        // Perform merge
+        let result = MrdtOrd::merge(&lca, &left, &right, &merged_mem);
+
+        dbg!(&result);
+
+        // Check the result
+        assert_eq!(result.len(), 1);
+        assert_eq!(result.index_of(&1), Some(0));
     }
 
     #[test]
