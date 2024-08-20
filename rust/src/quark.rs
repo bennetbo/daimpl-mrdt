@@ -8,6 +8,9 @@ use musli::{
 use scylla::{query::Query, serialize::row::SerializeRow, QueryResult, Session, SessionBuilder};
 use std::hash::{Hash, Hasher};
 
+#[cfg(test)]
+use std::{cell::RefCell, collections::HashMap};
+
 use crate::{Id, ReplicaId, VectorClock};
 
 const ENCODING: Encoding<OPTIONS> = Encoding::new().with_options();
@@ -56,8 +59,10 @@ pub enum Store {
     Scylla(ScyllaSession),
     #[cfg(test)]
     Fake {
-        objects: std::cell::RefCell<std::collections::HashMap<u64, Vec<u8>>>,
-        refs: std::cell::RefCell<std::collections::HashMap<u64, Ref>>,
+        commits: RefCell<HashMap<Id, Commit>>,
+        objects: RefCell<HashMap<u64, Vec<u8>>>,
+        refs: RefCell<HashMap<u64, Ref>>,
+        replicas: RefCell<HashMap<ReplicaId, CommitId>>,
     },
 }
 
@@ -127,7 +132,20 @@ impl GitLikeStore for Store {
                 Ok(commit)
             }
             #[cfg(test)]
-            Store::Fake { objects, refs } => todo!(),
+            Store::Fake {
+                replicas, commits, ..
+            } => {
+                let commits = commits.borrow();
+                let commit = commits
+                    .values()
+                    .next()
+                    .with_context(|| "No commits available")?;
+
+                let mut replicas = replicas.borrow_mut();
+                replicas.insert(replica_id, commit.id);
+
+                Ok(commit.clone())
+            }
         }
     }
 
@@ -168,7 +186,27 @@ impl GitLikeStore for Store {
                 })
             }
             #[cfg(test)]
-            Store::Fake { objects, refs } => todo!(),
+            Store::Fake {
+                commits, replicas, ..
+            } => {
+                let commit_id = Id::gen();
+                let mut replicas = replicas.borrow_mut();
+                let prev_commit_id = replicas
+                    .get(&replica_id)
+                    .with_context(|| "No previous commit available")?
+                    .clone();
+                replicas.insert(replica_id, commit_id.clone());
+
+                let mut commits = commits.borrow_mut();
+                let commit = Commit {
+                    id: commit_id,
+                    version,
+                    root_ref,
+                    parent_commit_id: Some(prev_commit_id),
+                };
+                commits.insert(commit_id, commit.clone());
+                Ok(commit)
+            }
         }
     }
 
@@ -181,7 +219,15 @@ impl GitLikeStore for Store {
                 }
             }
             #[cfg(test)]
-            Store::Fake { objects, refs } => todo!(),
+            Store::Fake {
+                replicas, commits, ..
+            } => {
+                let replicas = replicas.borrow();
+                let Some(commit_id) = replicas.get(&replica_id) else {
+                    return Ok(None);
+                };
+                Ok(commits.borrow().get(commit_id).cloned())
+            }
         }
     }
 
@@ -223,7 +269,13 @@ impl GitLikeStore for Store {
                 })
             }
             #[cfg(test)]
-            Store::Fake { objects, refs } => todo!(),
+            Store::Fake { commits, .. } => {
+                let commits = commits.borrow();
+                commits
+                    .get(&commit_id)
+                    .with_context(|| "Commit not found")
+                    .cloned()
+            }
         }
     }
 
@@ -268,7 +320,14 @@ impl GitLikeStore for Store {
                 })
             }
             #[cfg(test)]
-            Store::Fake { objects, refs } => todo!(),
+            Store::Fake { commits, .. } => {
+                let commits = commits.borrow();
+                commits
+                    .values()
+                    .find(|c| c.version == version)
+                    .with_context(|| "Failed to resolve commit for version")
+                    .cloned()
+            }
         }
     }
 }
@@ -329,24 +388,26 @@ impl Store {
             .query(
                 format!(
                     "CREATE TABLE IF NOT EXISTS {ref_table_name}
-                        (id BIGINT NOT NULL, left BIGINT, right BIGINT, object_ref BIGINT NOT NULL,
+                        (id BIGINT, left BIGINT, right BIGINT, object_ref BIGINT,
                         PRIMARY KEY (id))"
                 ),
                 &[],
             )
-            .await?;
+            .await
+            .with_context(|| "Failed to create ref table")?;
 
         let object_table_name = session.table_name(OBJECT_TABLE_NAME);
         session
             .query(
                 format!(
                     "CREATE TABLE IF NOT EXISTS {object_table_name}
-                        (id BIGINT NOT NULL, object BLOB,
+                        (id BIGINT, object BLOB,
                         PRIMARY KEY (id))"
                 ),
                 &[],
             )
-            .await?;
+            .await
+            .with_context(|| "Failed to create object table")?;
 
         let commit_table_name = session.table_name(COMMIT_TABLE_NAME);
         session
@@ -356,7 +417,8 @@ impl Store {
                         (id TEXT, version BLOB, root_ref BIGINT, prev_commit_id TEXT, PRIMARY KEY (id))"),
                 &[],
             )
-            .await?;
+            .await
+            .with_context(|| "Failed to create commit table")?;
 
         let replica_table_name = session.table_name(REPLICA_TABLE_NAME);
         session
@@ -367,7 +429,8 @@ impl Store {
                 ),
                 &[],
             )
-            .await?;
+            .await
+            .with_context(|| "Failed to create replica table")?;
 
         Ok(Self::Scylla(session))
     }
@@ -375,8 +438,10 @@ impl Store {
     #[cfg(test)]
     pub fn test() -> Self {
         Self::Fake {
-            objects: std::cell::RefCell::new(std::collections::HashMap::new()),
-            refs: std::cell::RefCell::new(std::collections::HashMap::new()),
+            commits: RefCell::new(HashMap::new()),
+            objects: RefCell::new(HashMap::new()),
+            refs: RefCell::new(HashMap::new()),
+            replicas: RefCell::new(HashMap::new()),
         }
     }
 
@@ -403,7 +468,7 @@ impl Store {
                 let result = session
                     .query(
                         format!("SELECT left, right, object_ref FROM {ref_table} WHERE id = ?"),
-                        (id.to_string(),),
+                        (id as i64,),
                     )
                     .await?
                     .single_row()
@@ -459,9 +524,10 @@ impl ObjectStore for Store {
                     .and_then(|value| value.clone().into_blob())
                     .with_context(|| "Failed to deserialize value")?;
 
-                ENCODING
+                let data: T = ENCODING
                     .decode(object_blob.as_slice())
-                    .with_context(|| "Failed to deserialize object")
+                    .with_context(|| "Failed to deserialize object")?;
+                Ok(Some(data))
             }
             #[cfg(test)]
             Store::Fake { objects, .. } => {
@@ -534,27 +600,26 @@ impl VersionedStore for Store {
         let cx = SerializeCx { store: self };
         let references = object.serialize(cx).await?;
 
-        let root_ref_id = references.first().with_context(|| "Structure is empty")?.id;
+        let root_ref_id = references.last().with_context(|| "Structure is empty")?.id;
 
         match self {
             Store::Scylla(session) => {
                 let ref_table_name = session.table_name(REF_TABLE_NAME);
-                session
-                    .query(
-                        format!("INSERT INTO {ref_table_name} (id, left, right, object_ref) VALUES (?, ?, ?, ?)"),
-                        references
-                            .iter()
-                            .map(|reference| {
-                                (
-                                    reference.id as i64,
-                                    reference.left.map(|id| id as i64),
-                                    reference.right.map(|id| id as i64),
-                                    reference.object_ref as i64,
-                                )
-                            })
-                            .collect::<Vec<_>>(),
-                    )
-                    .await?;
+                let query = format!("INSERT INTO {ref_table_name} (id, left, right, object_ref) VALUES (?, ?, ?, ?)");
+                for reference in references {
+                    session
+                        .query(
+                            query.clone(),
+                            (
+                                reference.id as i64,
+                                reference.left.map(|id| id as i64),
+                                reference.right.map(|id| id as i64),
+                                reference.object_ref as i64,
+                            ),
+                        )
+                        .await?;
+                }
+
                 Ok(root_ref_id)
             }
             #[cfg(test)]
