@@ -6,14 +6,22 @@ Table replica {
 Table commit {
   id uuid [primary key]
   version text
-  object_hash bigint
+  ref_id bigint
   prev_commit_id uuid
 }
 
 Table object {
-  hash bigint [primary key]
+  id bigint [primary key]
   value text
 }
 
+Table ref {
+  id bigint [primary key]
+  left bigint
+  right bigint
+  object_ref bigint
+}
+
 Ref: commit.id < replica.latest_commit_id
-Ref: commit.object_hash < object.hash
+Ref: ref.object_ref < object.id
+Ref: commit.ref_id < ref.id
