@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use log::log_enabled;
 use musli::{
     de::DecodeOwned,
@@ -108,6 +108,10 @@ pub trait ObjectStore {
         &self,
         id: ObjectRef,
     ) -> Result<Option<T>>;
+    async fn resolve_objects<T: Hash + DecodeOwned<Binary>>(
+        &self,
+        ids: &[u64],
+    ) -> Result<Vec<Option<T>>>;
     async fn insert_object<T: Hash + Encode<Binary>>(&self, object: &T) -> Result<ObjectRef>;
     async fn insert_objects<'a, T: 'a + Hash + Encode<Binary>>(
         &self,
@@ -561,6 +565,69 @@ impl ObjectStore for Store {
         }
     }
 
+    async fn resolve_objects<T: Hash + DecodeOwned<Binary>>(
+        &self,
+        ids: &[u64],
+    ) -> Result<Vec<Option<T>>> {
+        match self {
+            Store::Scylla(session) => {
+                const MAX_CHUNK_SIZE: usize = 100;
+
+                let object_table = session.table_name(OBJECT_TABLE_NAME);
+                let query = format!("SELECT id, object FROM {object_table} WHERE id IN ?");
+                let ids_i64: Vec<i64> = ids.iter().map(|&id| id as i64).collect();
+
+                let mut result = std::iter::repeat_with(|| None)
+                    .take(ids.len())
+                    .collect::<Vec<_>>();
+
+                for chunk in ids_i64.chunks(MAX_CHUNK_SIZE) {
+                    let rows = session
+                        .query(query.clone(), (chunk,))
+                        .await?
+                        .rows_or_empty();
+
+                    for row in rows {
+                        let id = row.columns[0]
+                            .as_ref()
+                            .and_then(|value| value.as_bigint())
+                            .with_context(|| "Failed to deserialize id")?;
+                        let object_blob = row.columns[1]
+                            .as_ref()
+                            .and_then(|value| value.clone().into_blob())
+                            .with_context(|| "Failed to deserialize value")?;
+
+                        let data: T = ENCODING
+                            .decode(object_blob.as_slice())
+                            .with_context(|| "Failed to deserialize object")?;
+
+                        if let Some(index) = ids.iter().position(|&x| x == id as u64) {
+                            result[index] = Some(data);
+                        }
+                    }
+                }
+
+                Ok(result)
+            }
+            #[cfg(test)]
+            Store::Fake { objects, .. } => {
+                let objects = objects.borrow();
+                let mut result = Vec::with_capacity(ids.len());
+                for &id in ids {
+                    if let Some(bytes) = objects.get(&id) {
+                        let decoded = ENCODING
+                            .decode(bytes.as_slice())
+                            .with_context(|| "Failed to deserialize object")?;
+                        result.push(Some(decoded));
+                    } else {
+                        result.push(None);
+                    }
+                }
+                Ok(result)
+            }
+        }
+    }
+
     async fn insert_objects<'a, T: 'a + Hash + Encode<Binary>>(
         &self,
         objects: &[&'a T],
@@ -580,39 +647,43 @@ impl ObjectStore for Store {
                     ))
                     .await?;
 
-                let mut batch = Batch::default();
-                for _ in 0..objects.len() {
-                    batch.append_statement(prepared.clone());
+                const BATCH_SIZE: usize = 2000;
+                let total_objects = objects.len();
+                let mut hashes = Vec::with_capacity(total_objects);
+
+                for chunk in (0..total_objects).step_by(BATCH_SIZE) {
+                    let end = std::cmp::min(chunk + BATCH_SIZE, total_objects);
+                    let mut batch = Batch::default();
+                    let mut values = Vec::with_capacity(end - chunk);
+
+                    for object in &objects[chunk..end] {
+                        batch.append_statement(prepared.clone());
+
+                        let mut hasher = std::hash::DefaultHasher::new();
+                        object.hash(&mut hasher);
+                        let hash = hasher.finish();
+                        hashes.push(hash);
+
+                        let mut data = Vec::new();
+                        ENCODING
+                            .encode(&mut data, object)
+                            .with_context(|| "Failed to serialize object")?;
+
+                        values.push((hash as i64, data));
+                    }
+
+                    session.raw().batch(&batch, &values).await?;
                 }
-
-                let mut values = Vec::with_capacity(objects.len());
-                for object in objects {
-                    let mut hasher = std::hash::DefaultHasher::new();
-                    object.hash(&mut hasher);
-                    let hash = hasher.finish();
-
-                    let mut data = Vec::new();
-                    ENCODING
-                        .encode(&mut data, object)
-                        .with_context(|| "Failed to serialize object")?;
-
-                    values.push((hash as i64, data))
-                }
-
-                session.raw().batch(&batch, &values).await?;
 
                 if let Some(instant) = instant {
                     log::debug!(
                         "Inserting {} objects took {:?}",
-                        values.len(),
+                        total_objects,
                         instant.elapsed()
                     );
                 }
 
-                Ok(values
-                    .iter()
-                    .map(|(hash, _)| *hash as u64)
-                    .collect::<Vec<_>>())
+                Ok(hashes)
             }
             #[cfg(test)]
             Store::Fake { .. } => {
@@ -807,8 +878,18 @@ pub struct DeserializeCx<'a> {
 }
 
 impl DeserializeCx<'_> {
-    pub async fn resolve<T: Hash + DecodeOwned<Binary>>(&self, id: u64) -> Result<Option<T>> {
+    pub async fn resolve_object<T: Hash + DecodeOwned<Binary>>(
+        &self,
+        id: u64,
+    ) -> Result<Option<T>> {
         self.store.resolve_object(id).await
+    }
+
+    pub async fn resolve_objects<T: Hash + DecodeOwned<Binary>>(
+        &self,
+        ids: &[u64],
+    ) -> Result<Vec<Option<T>>> {
+        self.store.resolve_objects(ids).await
     }
 
     pub async fn resolve_ref(&self, id: Option<u64>) -> Result<Option<Ref>> {
@@ -820,22 +901,23 @@ impl DeserializeCx<'_> {
         root: Ref,
     ) -> Result<Vec<T>> {
         let mut items = Vec::new();
-        items.push(
-            self.resolve(root.object_ref)
-                .await?
-                .with_context(|| "Missing object")?,
-        );
+        items.push(root.object_ref);
         let mut node = root;
         while let Some(new_node) = self.resolve_ref(node.left).await? {
-            items.push(
-                self.resolve(new_node.object_ref)
-                    .await?
-                    .with_context(|| "Missing object")?,
-            );
+            items.push(new_node.object_ref);
             node = new_node
         }
         items.reverse();
-        Ok(items)
+
+        let objects = self.resolve_objects::<T>(&items).await?;
+        let mut objects_only = Vec::with_capacity(objects.len());
+        for object in objects {
+            let Some(object) = object else {
+                return Err(anyhow!("Object not found"));
+            };
+            objects_only.push(object);
+        }
+        Ok(objects_only)
     }
 }
 
@@ -972,7 +1054,7 @@ mod tests {
         async fn deserialize(root: Ref, cx: DeserializeCx<'_>) -> Result<Self> {
             let mut items = Vec::new();
             items.push(
-                cx.resolve(root.object_ref)
+                cx.resolve_object(root.object_ref)
                     .await?
                     .with_context(|| "Missing object")?,
             );
@@ -980,7 +1062,7 @@ mod tests {
             let mut node = root;
             while let Some(new_node) = cx.resolve_ref(node.left).await? {
                 items.push(
-                    cx.resolve(new_node.object_ref)
+                    cx.resolve_object(new_node.object_ref)
                         .await?
                         .with_context(|| "Missing object")?,
                 );
