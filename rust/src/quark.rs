@@ -6,7 +6,10 @@ use musli::{
     storage::{Encoding, OPTIONS},
     Encode,
 };
-use scylla::{query::Query, serialize::row::SerializeRow, QueryResult, Session, SessionBuilder};
+use scylla::{
+    batch::Batch, prepared_statement::PreparedStatement, query::Query,
+    serialize::row::SerializeRow, QueryResult, Session, SessionBuilder,
+};
 use std::hash::{Hash, Hasher};
 use std::{fmt, time::Instant};
 
@@ -39,6 +42,10 @@ impl ScyllaSession {
         session.query(format!("CREATE KEYSPACE IF NOT EXISTS {keyspace} WITH REPLICATION = {{'class' : 'NetworkTopologyStrategy', 'replication_factor' : 1}}"), ()).await?;
 
         Ok(Self { session, keyspace })
+    }
+
+    pub fn raw(&self) -> &Session {
+        &self.session
     }
 
     pub async fn query(
@@ -102,6 +109,10 @@ pub trait ObjectStore {
         id: ObjectRef,
     ) -> Result<Option<T>>;
     async fn insert_object<T: Hash + Encode<Binary>>(&self, object: &T) -> Result<ObjectRef>;
+    async fn insert_objects<'a, T: 'a + Hash + Encode<Binary>>(
+        &self,
+        objects: &[&'a T],
+    ) -> Result<Vec<ObjectRef>>;
 }
 
 #[allow(async_fn_in_trait)]
@@ -380,9 +391,9 @@ async fn update_current_commit_id_for_replica(
     Ok(())
 }
 
-const REF_TABLE_NAME: &str = "ref";
-const OBJECT_TABLE_NAME: &str = "object";
 const COMMIT_TABLE_NAME: &str = "commit";
+const OBJECT_TABLE_NAME: &str = "object";
+const REF_TABLE_NAME: &str = "ref";
 const REPLICA_TABLE_NAME: &str = "replica";
 
 impl Store {
@@ -550,10 +561,77 @@ impl ObjectStore for Store {
         }
     }
 
+    async fn insert_objects<'a, T: 'a + Hash + Encode<Binary>>(
+        &self,
+        objects: &[&'a T],
+    ) -> Result<Vec<ObjectRef>> {
+        match self {
+            Store::Scylla(session) => {
+                let mut instant = None;
+                if log_enabled!(log::Level::Debug) {
+                    instant = Some(Instant::now());
+                }
+
+                let prepared: PreparedStatement = session
+                    .raw()
+                    .prepare(format!(
+                        "INSERT INTO {} (id, object) VALUES (?, ?)",
+                        session.table_name(OBJECT_TABLE_NAME)
+                    ))
+                    .await?;
+
+                let mut batch = Batch::default();
+                for _ in 0..objects.len() {
+                    batch.append_statement(prepared.clone());
+                }
+
+                let mut values = Vec::with_capacity(objects.len());
+                for object in objects {
+                    let mut hasher = std::hash::DefaultHasher::new();
+                    object.hash(&mut hasher);
+                    let hash = hasher.finish();
+
+                    let mut data = Vec::new();
+                    ENCODING
+                        .encode(&mut data, object)
+                        .with_context(|| "Failed to serialize object")?;
+
+                    values.push((hash as i64, data))
+                }
+
+                session.raw().batch(&batch, &values).await?;
+
+                if let Some(instant) = instant {
+                    log::debug!(
+                        "Inserting {} objects took {:?}",
+                        values.len(),
+                        instant.elapsed()
+                    );
+                }
+
+                Ok(values
+                    .iter()
+                    .map(|(hash, _)| *hash as u64)
+                    .collect::<Vec<_>>())
+            }
+            #[cfg(test)]
+            Store::Fake { .. } => {
+                let mut hashes = Vec::new();
+                for object in objects {
+                    hashes.push(self.insert_object(object).await?);
+                }
+                Ok(hashes)
+            }
+        }
+    }
+
     async fn insert_object<T: Hash + Encode<Binary>>(&self, object: &T) -> Result<u64> {
         match self {
             Store::Scylla(session) => {
-                let object_table = session.table_name(OBJECT_TABLE_NAME);
+                let mut instant = None;
+                if log_enabled!(log::Level::Debug) {
+                    instant = Some(Instant::now());
+                }
 
                 let mut data = Vec::new();
                 ENCODING
@@ -566,10 +644,17 @@ impl ObjectStore for Store {
 
                 session
                     .query(
-                        format!("INSERT INTO {object_table} (id, object) VALUES (?, ?)"),
+                        format!(
+                            "INSERT INTO {} (id, object) VALUES (?, ?)",
+                            session.table_name(OBJECT_TABLE_NAME)
+                        ),
                         (hash as i64, data),
                     )
                     .await?;
+
+                if let Some(instant) = instant {
+                    log::debug!("Inserting object took {:?}", instant.elapsed());
+                }
 
                 Ok(hash)
             }
@@ -613,33 +698,47 @@ impl VersionedStore for Store {
     }
 
     async fn insert_versioned<T: Serialize + fmt::Debug>(&self, object: &T) -> Result<u64> {
-        let mut instant = None;
+        let mut insert_versioned_time = None;
         if log_enabled!(log::Level::Debug) {
-            instant = Some(Instant::now());
+            insert_versioned_time = Some(Instant::now());
         }
         let cx = SerializeCx { store: self };
         let references = object.serialize(cx).await?;
         log::debug!("Inserting object with {} references", references.len());
+        let mut reference_time = None;
+        if log_enabled!(log::Level::Debug) {
+            reference_time = Some(Instant::now());
+        }
 
         let root_ref_id = references.last().with_context(|| "Structure is empty")?.id;
 
         let root_ref = match self {
             Store::Scylla(session) => {
-                let ref_table_name = session.table_name(REF_TABLE_NAME);
-                let query = format!("INSERT INTO {ref_table_name} (id, left, right, object_ref) VALUES (?, ?, ?, ?)");
-                for reference in references {
-                    session
-                        .query(
-                            query.clone(),
-                            (
-                                reference.id as i64,
-                                reference.left.map(|id| id as i64),
-                                reference.right.map(|id| id as i64),
-                                reference.object_ref as i64,
-                            ),
-                        )
-                        .await?;
+                let prepared: PreparedStatement = session
+                    .raw()
+                    .prepare(format!(
+                        "INSERT INTO {} (id, left, right, object_ref) VALUES (?, ?, ?, ?)",
+                        session.table_name(REF_TABLE_NAME)
+                    ))
+                    .await?;
+
+                let mut batch = Batch::default();
+                for _ in 0..references.len() {
+                    batch.append_statement(prepared.clone());
                 }
+                let values = references
+                    .into_iter()
+                    .map(|reference| {
+                        (
+                            reference.id as i64,
+                            reference.left.map(|id| id as i64),
+                            reference.right.map(|id| id as i64),
+                            reference.object_ref as i64,
+                        )
+                    })
+                    .collect::<Vec<_>>();
+
+                session.raw().batch(&batch, values).await?;
 
                 root_ref_id
             }
@@ -654,8 +753,11 @@ impl VersionedStore for Store {
         };
 
         if log_enabled!(log::Level::Debug) {
-            if let Some(elapsed) = instant.map(|i| i.elapsed()) {
-                log::debug!("Inserting object took {} ms", elapsed.as_millis());
+            if let Some(elapsed) = reference_time.map(|i| i.elapsed()) {
+                log::debug!("Inserting references took {} ms", elapsed.as_millis());
+            }
+            if let Some(elapsed) = insert_versioned_time.map(|i| i.elapsed()) {
+                log::debug!("Inserting versioned object took {} ms", elapsed.as_millis());
             }
         }
 
@@ -672,28 +774,29 @@ impl SerializeCx<'_> {
         self.store.insert_object(object).await
     }
 
+    pub async fn insert_objects<'a, T: 'a + Hash + Encode<Binary>>(
+        &self,
+        objects: &[&'a T],
+    ) -> Result<Vec<u64>> {
+        self.store.insert_objects(objects).await
+    }
+
     pub async fn serialize_iter<'a, T: 'a + Hash + Encode<Binary>>(
         &self,
         iter: impl Iterator<Item = &'a T>,
     ) -> Result<Vec<Ref>> {
-        let mut refs = Vec::new();
         let mut prev_hash: Option<u64> = None;
-        for object in iter {
-            let mut hasher = std::hash::DefaultHasher::new();
-            object.hash(&mut hasher);
-            if let Some(last_hash) = prev_hash {
-                last_hash.hash(&mut hasher);
-            }
-            let hash = hasher.finish();
-
-            let object_ref = self.insert_object(object).await?;
+        let objects = iter.collect::<Vec<_>>();
+        let mut refs = Vec::with_capacity(objects.len());
+        let object_refs = self.insert_objects(&objects).await?;
+        for object_ref in object_refs {
             refs.push(Ref {
-                id: hash,
+                id: object_ref,
                 left: prev_hash,
                 right: None,
                 object_ref,
             });
-            prev_hash = Some(hash);
+            prev_hash = Some(object_ref);
         }
         Ok(refs)
     }
@@ -744,6 +847,89 @@ pub trait Serialize {
 #[allow(async_fn_in_trait)]
 pub trait Deserialize: Sized {
     async fn deserialize(root: Ref, cx: DeserializeCx) -> Result<Self>;
+}
+
+// Some debugging tools, which can be helpful for benchmarks
+impl Store {
+    pub async fn dump_table_counts(&self) -> Result<()> {
+        match self {
+            Store::Scylla(session) => {
+                async fn get_table_count(session: &ScyllaSession, table_name: &str) -> Result<i64> {
+                    session
+                        .query(
+                            format!("SELECT COUNT(*) FROM {}", session.table_name(table_name)),
+                            (),
+                        )
+                        .await?
+                        .single_row()?
+                        .columns[0]
+                        .clone()
+                        .with_context(|| "No entries")?
+                        .as_bigint()
+                        .with_context(|| "Invalid value")
+                }
+
+                let commit_count = get_table_count(session, "commit").await?;
+                let object_count = get_table_count(session, "object").await?;
+                let ref_count = get_table_count(session, "ref").await?;
+                let replica_count = get_table_count(session, "replica").await?;
+                log::debug!(
+                    "Current amount of entities, commits: {}, objects: {}, refs: {}, replicas: {}",
+                    commit_count,
+                    object_count,
+                    ref_count,
+                    replica_count
+                );
+            }
+            #[cfg(test)]
+            Store::Fake {
+                commits,
+                objects,
+                refs,
+                replicas,
+            } => {
+                log::debug!(
+                    "commit: {}, object: {}, ref: {}, replica: {}",
+                    commits.borrow().len(),
+                    objects.borrow().len(),
+                    refs.borrow().len(),
+                    replicas.borrow().len()
+                );
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn reset_db(&self) -> Result<()> {
+        match self {
+            Store::Scylla(session) => {
+                let table_names = [
+                    COMMIT_TABLE_NAME,
+                    OBJECT_TABLE_NAME,
+                    REF_TABLE_NAME,
+                    REPLICA_TABLE_NAME,
+                ];
+
+                for table_name in table_names {
+                    let table = session.table_name(table_name);
+                    session.query(format!("DROP TABLE {}", table), ()).await?;
+                }
+            }
+            #[cfg(test)]
+            Store::Fake {
+                commits,
+                objects,
+                refs,
+                replicas,
+            } => {
+                commits.borrow_mut().clear();
+                objects.borrow_mut().clear();
+                refs.borrow_mut().clear();
+                replicas.borrow_mut().clear();
+            }
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
