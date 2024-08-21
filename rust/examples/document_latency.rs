@@ -121,9 +121,22 @@ async fn main() -> Result<()> {
     let hostname = std::env::var("SCYLLA_URL").unwrap_or_else(|_| "127.0.0.1:9042".to_string());
 
     if let Some(gen_ids) = args.gen_ids {
-        for _ in 0..gen_ids {
-            println!("{}", Id::gen().to_string());
+        let ids = (0..gen_ids)
+            .map(|_| Id::gen().to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        for i in 0..gen_ids {
+            println!(
+                "cargo r --release --example document_latency -- --replicas {ids} --index {i}"
+            );
         }
+        println!("Or with tracing...");
+        for i in 0..gen_ids {
+            println!(
+                "RUST_LOG=debug cargo r --release --example document_latency -- --replicas {ids} --index {i}"
+            );
+        }
+
         return Ok(());
     }
 
@@ -199,20 +212,21 @@ async fn main() -> Result<()> {
         let random_position = rand::thread_rng().gen_range(0..document.len());
         document.insert(random_position, random_char);
 
-        let curr_document: Document = replica.latest_object().await.unwrap().unwrap();
+        let mut merged_document = None;
 
         while let Ok(replica_id_to_merge_with) = rx.try_recv() {
             println!(
                 "Received merge request for replica {}",
                 replica_id_to_merge_with
             );
-            replica
+            let (_, document) = replica
                 .merge_with::<Document>(replica_id_to_merge_with)
                 .await
                 .unwrap();
+            merged_document = Some(document);
         }
 
-        if replica.latest_version() != &document_version {
+        if let Some(merged_document) = merged_document {
             println!("Merge occurred in background, merging with local version...");
             //We need to merge again, because there occured a merge while we were inserting a new character
             let lca_version = VectorClock::lca(&replica.latest_version(), &document_version);
@@ -228,7 +242,7 @@ async fn main() -> Result<()> {
                 .unwrap()
                 .unwrap();
 
-            document = Document::merge(&lca_object, &curr_document, &document);
+            document = Document::merge(&lca_object, &merged_document, &document);
         }
 
         let commit = replica.commit_object(&document).await.unwrap();

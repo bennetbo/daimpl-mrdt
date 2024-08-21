@@ -64,7 +64,7 @@ impl Replica {
     pub async fn merge_with<T: Serialize + Deserialize + Mergeable<T> + fmt::Debug>(
         &mut self,
         other_replica: ReplicaId,
-    ) -> Result<Commit> {
+    ) -> Result<(Commit, T)> {
         let commit_to_merge_with = self
             .store
             .latest_commit_for_replica(other_replica)
@@ -90,7 +90,9 @@ impl Replica {
             .with_context(|| "LCA object is empty")?;
 
         let merged_object = T::merge(&lca_object, &current_object, &object_to_merge_with);
-        self.commit_object(&merged_object).await
+        let commit = self.commit_object(&merged_object).await?;
+
+        Ok((commit, merged_object))
     }
 
     fn next_version(&self) -> VectorClock {
