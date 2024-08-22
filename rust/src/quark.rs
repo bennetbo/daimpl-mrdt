@@ -125,6 +125,16 @@ pub trait VersionedStore {
     async fn insert_versioned<T: Serialize + fmt::Debug>(&self, object: &T) -> Result<u64>;
 }
 
+#[allow(async_fn_in_trait)]
+pub trait Serialize {
+    async fn serialize(&self, cx: SerializeCx) -> Result<Vec<Ref>>;
+}
+
+#[allow(async_fn_in_trait)]
+pub trait Deserialize: Sized {
+    async fn deserialize(root: Ref, cx: DeserializeCx) -> Result<Self>;
+}
+
 impl GitLikeStore for Store {
     async fn clone(&self, replica_id: ReplicaId) -> Result<Commit> {
         log::debug!("Cloning replica {replica_id}");
@@ -919,16 +929,6 @@ impl DeserializeCx<'_> {
         }
         Ok(objects_only)
     }
-}
-
-#[allow(async_fn_in_trait)]
-pub trait Serialize {
-    async fn serialize(&self, cx: SerializeCx) -> Result<Vec<Ref>>;
-}
-
-#[allow(async_fn_in_trait)]
-pub trait Deserialize: Sized {
-    async fn deserialize(root: Ref, cx: DeserializeCx) -> Result<Self>;
 }
 
 // Some debugging tools, which can be helpful for benchmarks
