@@ -156,6 +156,8 @@ pub trait Deserialize: Sized {
     async fn deserialize(root: Ref, cx: DeserializeCx) -> Result<Self>;
 }
 
+const BATCH_SIZE: usize = 2000;
+
 impl GitLikeStore for Store {
     async fn clone(&self, replica_id: ReplicaId) -> Result<Commit> {
         log::debug!("Cloning replica {replica_id}");
@@ -678,7 +680,6 @@ impl ObjectStore for Store {
                     ))
                     .await?;
 
-                const BATCH_SIZE: usize = 2000;
                 let total_objects = objects.len();
                 let mut hashes = Vec::with_capacity(total_objects);
 
@@ -824,23 +825,24 @@ impl NodeStore for Store {
                     ))
                     .await?;
 
-                let mut batch = Batch::default();
-                for _ in 0..references.len() {
-                    batch.append_statement(prepared.clone());
-                }
-                let values = references
-                    .into_iter()
-                    .map(|reference| {
-                        (
+                let total_refs = references.len();
+                for chunk in (0..total_refs).step_by(BATCH_SIZE) {
+                    let end = std::cmp::min(chunk + BATCH_SIZE, total_refs);
+                    let mut batch = Batch::default();
+                    let mut values = Vec::with_capacity(end - chunk);
+
+                    for reference in &references[chunk..end] {
+                        batch.append_statement(prepared.clone());
+                        values.push((
                             reference.id as i64,
                             reference.left.map(|id| id as i64),
                             reference.right.map(|id| id as i64),
                             reference.object_ref as i64,
-                        )
-                    })
-                    .collect::<Vec<_>>();
+                        ));
+                    }
 
-                session.raw().batch(&batch, values).await?;
+                    session.raw().batch(&batch, &values).await?;
+                }
 
                 root_ref_id
             }
