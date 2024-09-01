@@ -25,9 +25,9 @@ async fn main() -> Result<()> {
 
     let hostname = env::var("SCYLLA_URL").unwrap_or_else(|_| "127.0.0.1:9042".to_string());
 
-    let base_store = Store::setup(hostname.clone(), "test").await.unwrap();
-    let store1 = Store::setup(hostname.clone(), "test").await.unwrap();
-    let store2 = Store::setup(hostname, "test").await.unwrap();
+    let base_store = QuarkStore::setup(hostname.clone(), "test").await.unwrap();
+    let store1 = QuarkStore::setup(hostname.clone(), "test").await.unwrap();
+    let store2 = QuarkStore::setup(hostname, "test").await.unwrap();
 
     // TODO: It is unclear how to handle different replicas without a "common" ancestor, we start
     // by manually establishing a base commit

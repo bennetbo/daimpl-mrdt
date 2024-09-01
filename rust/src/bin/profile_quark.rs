@@ -7,7 +7,7 @@ async fn main() -> Result<()> {
 
     let hostname = env::var("SCYLLA_URL").unwrap_or_else(|_| "127.0.0.1:9042".to_string());
 
-    let store = Store::setup(hostname, "test").await.unwrap();
+    let store = QuarkStore::setup(hostname, "test").await.unwrap();
 
     store.dump_table_counts().await?;
 

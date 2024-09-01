@@ -117,7 +117,21 @@ async fn main() -> Result<()> {
     let args = Args::parse();
     let hostname = std::env::var("SCYLLA_URL").unwrap_or_else(|_| "127.0.0.1:9042".to_string());
 
-    if let Some(gen_ids) = args.gen_ids {
+    if args.setup {
+        println!("Setting up database...");
+        let store = QuarkStore::setup(hostname.clone(), "test").await.unwrap();
+        println!("Connected to database!");
+        let main_replica = Id::gen();
+        let document = Document::from_str(include_str!("../data/text.txt"));
+        println!("Created document");
+        let base_set_ref = store.insert(&document).await.unwrap();
+        let _base_commit = store
+            .commit(main_replica, VectorClock::default(), base_set_ref)
+            .await
+            .unwrap();
+        println!("Setup complete!");
+
+        let gen_ids = args.gen_ids.unwrap_or(2);
         let ids = (0..gen_ids)
             .map(|_| Id::gen().to_string())
             .collect::<Vec<_>>()
@@ -133,23 +147,6 @@ async fn main() -> Result<()> {
                 "RUST_LOG=debug cargo r --release --example document_latency -- --replicas {ids} --index {i}"
             );
         }
-
-        return Ok(());
-    }
-
-    if args.setup {
-        println!("Setting up database...");
-        let store = Store::setup(hostname.clone(), "test").await.unwrap();
-        println!("Connected to database!");
-        let main_replica = Id::gen();
-        let document = Document::from_str(include_str!("../data/text.txt"));
-        println!("Created document");
-        let base_set_ref = store.insert(&document).await.unwrap();
-        let _base_commit = store
-            .commit(main_replica, VectorClock::default(), base_set_ref)
-            .await
-            .unwrap();
-        println!("Setup complete!");
         return Ok(());
     }
 
@@ -164,7 +161,7 @@ async fn main() -> Result<()> {
     let replica_id = replica_ids.remove(args.index);
 
     let hostname = std::env::var("SCYLLA_URL").unwrap_or_else(|_| "127.0.0.1:9042".to_string());
-    let store = Store::setup(hostname.clone(), "test").await.unwrap();
+    let store = QuarkStore::setup(hostname.clone(), "test").await.unwrap();
 
     let mut replica = Replica::clone(replica_id, store).await.unwrap();
 
@@ -207,7 +204,8 @@ async fn main() -> Result<()> {
 
         // Insert the character at a random position
         let random_position = rand::thread_rng().gen_range(0..document.len());
-        document.insert(random_position, random_char);
+        // document.insert(random_position, random_char);
+        document.append(random_char);
 
         let mut merged_document = None;
 
@@ -223,13 +221,14 @@ async fn main() -> Result<()> {
             merged_document = Some(document);
         }
 
+        let mut measure_latency = false;
         if let Some(merged_document) = merged_document {
             println!("Merge occurred in background, merging with local version...");
             //We need to merge again, because there occured a merge while we were inserting a new character
             let lca_version = VectorClock::lca(&replica.latest_version(), &document_version);
             let lca_commit = replica
                 .store()
-                .resolve_commit_by_version(lca_version)
+                .resolve_commit_for_version(lca_version)
                 .await
                 .unwrap();
             let lca_object = replica
@@ -240,17 +239,20 @@ async fn main() -> Result<()> {
                 .unwrap();
 
             document = Document::merge(&lca_object, &merged_document, &document);
+            measure_latency = true;
         }
 
         let commit = replica.commit_object(&document).await.unwrap();
         document_version = commit.version.clone();
 
-        let elapsed_ms = latency.elapsed().as_millis();
-        latencies.push((document.len(), elapsed_ms));
-        println!(
-            "Inserted '{}' at position {}, {} ms elapsed",
-            random_char, random_position, elapsed_ms
-        );
+        if measure_latency {
+            let elapsed_ms = latency.elapsed().as_millis();
+            latencies.push((document.len(), elapsed_ms));
+            println!(
+                "Inserted '{}' at position {}, {} ms elapsed",
+                random_char, random_position, elapsed_ms
+            );
+        }
     }
 
     STOP.store(true, Ordering::Relaxed);

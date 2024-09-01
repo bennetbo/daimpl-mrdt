@@ -11,7 +11,7 @@ use scylla::{
     serialize::row::SerializeRow, QueryResult, Session, SessionBuilder,
 };
 use std::hash::{Hash, Hasher};
-use std::{fmt, time::Instant};
+use std::time::Instant;
 
 #[cfg(test)]
 use std::{cell::RefCell, collections::HashMap};
@@ -85,7 +85,7 @@ impl ScyllaSession {
     }
 }
 
-pub enum Store {
+pub enum QuarkStore {
     Scylla(ScyllaSession),
     #[cfg(test)]
     Fake {
@@ -109,7 +109,7 @@ pub struct Commit {
 pub type ObjectRef = u64;
 
 #[allow(async_fn_in_trait)]
-pub trait GitLikeStore {
+pub trait VersionedStore {
     async fn clone(&self, replica_id: ReplicaId) -> Result<Commit>;
     async fn commit(
         &self,
@@ -120,7 +120,7 @@ pub trait GitLikeStore {
 
     async fn latest_commit_for_replica(&self, replica_id: ReplicaId) -> Result<Option<Commit>>;
     async fn resolve_commit(&self, commit_id: CommitId) -> Result<Commit>;
-    async fn resolve_commit_by_version(&self, version: VectorClock) -> Result<Commit>;
+    async fn resolve_commit_for_version(&self, version: VectorClock) -> Result<Commit>;
 }
 
 #[allow(async_fn_in_trait)]
@@ -141,9 +141,9 @@ pub trait ObjectStore {
 }
 
 #[allow(async_fn_in_trait)]
-pub trait NodeStore {
-    async fn resolve<T: Deserialize + fmt::Debug>(&self, root: u64) -> Result<Option<T>>;
-    async fn insert<T: Serialize + fmt::Debug>(&self, object: &T) -> Result<u64>;
+pub trait RefStore {
+    async fn resolve<T: Deserialize>(&self, root: u64) -> Result<Option<T>>;
+    async fn insert<T: Serialize>(&self, object: &T) -> Result<u64>;
 }
 
 #[allow(async_fn_in_trait)]
@@ -158,11 +158,11 @@ pub trait Deserialize: Sized {
 
 const BATCH_SIZE: usize = 2000;
 
-impl GitLikeStore for Store {
+impl VersionedStore for QuarkStore {
     async fn clone(&self, replica_id: ReplicaId) -> Result<Commit> {
         log::debug!("Cloning replica {replica_id}");
         match self {
-            Store::Scylla(session) => {
+            QuarkStore::Scylla(session) => {
                 let commit_table = session.table_name(COMMIT_TABLE_NAME);
 
                 let commit_id = session
@@ -183,7 +183,7 @@ impl GitLikeStore for Store {
                 Ok(commit)
             }
             #[cfg(test)]
-            Store::Fake {
+            QuarkStore::Fake {
                 replicas, commits, ..
             } => {
                 let commits = commits.borrow();
@@ -206,11 +206,9 @@ impl GitLikeStore for Store {
         version: VectorClock,
         root_ref: u64,
     ) -> Result<Commit> {
-        log::debug!(
-            "Replica {replica_id} adding new commit. Ref: {root_ref}, Version: {version:?}"
-        );
+        log::debug!("Replica {replica_id} adding new commit. Ref: {root_ref}, Version: {version}");
         match self {
-            Store::Scylla(session) => {
+            QuarkStore::Scylla(session) => {
                 let commit_table = session.table_name(COMMIT_TABLE_NAME);
                 let commit_id = Id::gen();
                 let prev_commit_id = current_commit_id_for_replica(session, replica_id).await?;
@@ -240,7 +238,7 @@ impl GitLikeStore for Store {
                 })
             }
             #[cfg(test)]
-            Store::Fake {
+            QuarkStore::Fake {
                 commits, replicas, ..
             } => {
                 let commit_id = Id::gen();
@@ -266,14 +264,14 @@ impl GitLikeStore for Store {
 
     async fn latest_commit_for_replica(&self, replica_id: ReplicaId) -> Result<Option<Commit>> {
         match self {
-            Store::Scylla(session) => {
+            QuarkStore::Scylla(session) => {
                 match current_commit_id_for_replica(session, replica_id).await? {
                     Some(commit_id) => Ok(Some(self.resolve_commit(commit_id).await?)),
                     None => Ok(None),
                 }
             }
             #[cfg(test)]
-            Store::Fake {
+            QuarkStore::Fake {
                 replicas, commits, ..
             } => {
                 let replicas = replicas.borrow();
@@ -287,7 +285,7 @@ impl GitLikeStore for Store {
 
     async fn resolve_commit(&self, commit_id: CommitId) -> Result<Commit> {
         match self {
-            Store::Scylla(session) => {
+            QuarkStore::Scylla(session) => {
                 let commit_table = session.table_name(COMMIT_TABLE_NAME);
                 let result = session
                     .query(
@@ -323,7 +321,7 @@ impl GitLikeStore for Store {
                 })
             }
             #[cfg(test)]
-            Store::Fake { commits, .. } => {
+            QuarkStore::Fake { commits, .. } => {
                 let commits = commits.borrow();
                 commits
                     .get(&commit_id)
@@ -333,9 +331,9 @@ impl GitLikeStore for Store {
         }
     }
 
-    async fn resolve_commit_by_version(&self, version: VectorClock) -> Result<Commit> {
+    async fn resolve_commit_for_version(&self, version: VectorClock) -> Result<Commit> {
         match self {
-            Store::Scylla(session) => {
+            QuarkStore::Scylla(session) => {
                 let commit_table = session.table_name(COMMIT_TABLE_NAME);
 
                 let mut version_bytes = Vec::new();
@@ -374,7 +372,7 @@ impl GitLikeStore for Store {
                 })
             }
             #[cfg(test)]
-            Store::Fake { commits, .. } => {
+            QuarkStore::Fake { commits, .. } => {
                 let commits = commits.borrow();
                 commits
                     .values()
@@ -433,8 +431,11 @@ const OBJECT_TABLE_NAME: &str = "object";
 const REF_TABLE_NAME: &str = "ref";
 const REPLICA_TABLE_NAME: &str = "replica";
 
-impl Store {
-    pub async fn setup(hostname: impl Into<String>, keyspace: impl Into<String>) -> Result<Store> {
+impl QuarkStore {
+    pub async fn setup(
+        hostname: impl Into<String>,
+        keyspace: impl Into<String>,
+    ) -> Result<QuarkStore> {
         let session = ScyllaSession::new(hostname, keyspace).await?;
 
         let ref_table_name = session.table_name(REF_TABLE_NAME);
@@ -502,9 +503,9 @@ impl Store {
     #[cfg(test)]
     pub fn insert_ref(&self, reference: Ref) {
         match self {
-            Store::Scylla(_) => todo!(),
+            QuarkStore::Scylla(_) => todo!(),
             #[cfg(test)]
-            Store::Fake { refs, .. } => {
+            QuarkStore::Fake { refs, .. } => {
                 let mut refs = refs.borrow_mut();
                 refs.insert(reference.id, reference);
             }
@@ -517,7 +518,7 @@ impl Store {
         };
 
         match self {
-            Store::Scylla(session) => {
+            QuarkStore::Scylla(session) => {
                 let ref_table = session.table_name(REF_TABLE_NAME);
                 let result = session
                     .query(
@@ -552,7 +553,7 @@ impl Store {
                 }))
             }
             #[cfg(test)]
-            Store::Fake { refs, .. } => {
+            QuarkStore::Fake { refs, .. } => {
                 let refs = refs.borrow();
                 Ok(refs.get(&id).cloned())
             }
@@ -560,10 +561,10 @@ impl Store {
     }
 }
 
-impl ObjectStore for Store {
+impl ObjectStore for QuarkStore {
     async fn resolve_object<T: Hash + DecodeOwned<Binary>>(&self, id: u64) -> Result<Option<T>> {
         match self {
-            Store::Scylla(session) => {
+            QuarkStore::Scylla(session) => {
                 let object_table = session.table_name(OBJECT_TABLE_NAME);
                 let object_blob = session
                     .query(
@@ -584,7 +585,7 @@ impl ObjectStore for Store {
                 Ok(Some(data))
             }
             #[cfg(test)]
-            Store::Fake { objects, .. } => {
+            QuarkStore::Fake { objects, .. } => {
                 let objects = objects.borrow();
                 let Some(bytes) = objects.get(&id) else {
                     return Ok(None);
@@ -603,7 +604,7 @@ impl ObjectStore for Store {
         ids: &[u64],
     ) -> Result<Vec<Option<T>>> {
         match self {
-            Store::Scylla(session) => {
+            QuarkStore::Scylla(session) => {
                 const MAX_CHUNK_SIZE: usize = 100;
 
                 let object_table = session.table_name(OBJECT_TABLE_NAME);
@@ -643,7 +644,7 @@ impl ObjectStore for Store {
                 Ok(result)
             }
             #[cfg(test)]
-            Store::Fake { objects, .. } => {
+            QuarkStore::Fake { objects, .. } => {
                 let objects = objects.borrow();
                 let mut result = Vec::with_capacity(ids.len());
                 for &id in ids {
@@ -666,7 +667,7 @@ impl ObjectStore for Store {
         objects: &[&'a T],
     ) -> Result<Vec<ObjectRef>> {
         match self {
-            Store::Scylla(session) => {
+            QuarkStore::Scylla(session) => {
                 let mut instant = None;
                 if log_enabled!(log::Level::Debug) {
                     instant = Some(Instant::now());
@@ -718,7 +719,7 @@ impl ObjectStore for Store {
                 Ok(hashes)
             }
             #[cfg(test)]
-            Store::Fake { .. } => {
+            QuarkStore::Fake { .. } => {
                 let mut hashes = Vec::new();
                 for object in objects {
                     hashes.push(self.insert_object(object).await?);
@@ -730,7 +731,7 @@ impl ObjectStore for Store {
 
     async fn insert_object<T: Hash + Encode<Binary>>(&self, object: &T) -> Result<u64> {
         match self {
-            Store::Scylla(session) => {
+            QuarkStore::Scylla(session) => {
                 let mut instant = None;
                 if log_enabled!(log::Level::Debug) {
                     instant = Some(Instant::now());
@@ -762,7 +763,7 @@ impl ObjectStore for Store {
                 Ok(hash)
             }
             #[cfg(test)]
-            Store::Fake { objects, .. } => {
+            QuarkStore::Fake { objects, .. } => {
                 let mut hasher = std::hash::DefaultHasher::new();
                 object.hash(&mut hasher);
                 let hash = hasher.finish();
@@ -780,8 +781,8 @@ impl ObjectStore for Store {
     }
 }
 
-impl NodeStore for Store {
-    async fn resolve<T: Deserialize + fmt::Debug>(&self, root: u64) -> Result<Option<T>> {
+impl RefStore for QuarkStore {
+    async fn resolve<T: Deserialize>(&self, root: u64) -> Result<Option<T>> {
         let mut instant = None;
         if log_enabled!(log::Level::Debug) {
             instant = Some(Instant::now());
@@ -800,7 +801,7 @@ impl NodeStore for Store {
         Ok(Some(result))
     }
 
-    async fn insert<T: Serialize + fmt::Debug>(&self, object: &T) -> Result<u64> {
+    async fn insert<T: Serialize>(&self, object: &T) -> Result<u64> {
         let mut insert_versioned_time = None;
         if log_enabled!(log::Level::Debug) {
             insert_versioned_time = Some(Instant::now());
@@ -816,7 +817,7 @@ impl NodeStore for Store {
         let root_ref_id = references.last().with_context(|| "Structure is empty")?.id;
 
         let root_ref = match self {
-            Store::Scylla(session) => {
+            QuarkStore::Scylla(session) => {
                 let prepared: PreparedStatement = session
                     .raw()
                     .prepare(format!(
@@ -847,7 +848,7 @@ impl NodeStore for Store {
                 root_ref_id
             }
             #[cfg(test)]
-            Store::Fake { refs, .. } => {
+            QuarkStore::Fake { refs, .. } => {
                 let mut refs = refs.borrow_mut();
                 for reference in references {
                     refs.insert(reference.id, reference);
@@ -870,7 +871,7 @@ impl NodeStore for Store {
 }
 
 pub struct SerializeCx<'a> {
-    store: &'a Store,
+    store: &'a QuarkStore,
 }
 
 impl SerializeCx<'_> {
@@ -903,7 +904,7 @@ impl SerializeCx<'_> {
 }
 
 pub struct DeserializeCx<'a> {
-    store: &'a Store,
+    store: &'a QuarkStore,
 }
 
 impl DeserializeCx<'_> {
@@ -942,6 +943,8 @@ impl DeserializeCx<'_> {
         let mut objects_only = Vec::with_capacity(objects.len());
         for object in objects {
             let Some(object) = object else {
+                log::debug!("Object not found for ids: {:?}", &items);
+                self.store.dump().await?;
                 return Err(anyhow!("Object not found"));
             };
             objects_only.push(object);
@@ -951,7 +954,7 @@ impl DeserializeCx<'_> {
 }
 
 // Some debugging tools, which can be helpful for benchmarks
-impl Store {
+impl QuarkStore {
     pub async fn dump(&self) -> Result<()> {
         if !log_enabled!(log::Level::Debug) {
             return Ok(());
@@ -968,7 +971,7 @@ impl Store {
     async fn dump_replicas(&self) -> Result<()> {
         log::debug!("---------- Dumping replicas... ----------");
         match self {
-            Store::Scylla(session) => {
+            QuarkStore::Scylla(session) => {
                 for row in session
                     .query(
                         format!(
@@ -992,7 +995,7 @@ impl Store {
                 }
             }
             #[cfg(test)]
-            Store::Fake { replicas, .. } => {
+            QuarkStore::Fake { replicas, .. } => {
                 let replicas = replicas.borrow();
                 for (id, commit) in replicas.iter() {
                     log::debug!("{} {}", id, commit);
@@ -1005,7 +1008,7 @@ impl Store {
     async fn dump_commits(&self) -> Result<()> {
         log::debug!("---------- Dumping commits... ----------");
         match self {
-            Store::Scylla(session) => {
+            QuarkStore::Scylla(session) => {
                 for row in session
                     .query(
                         format!(
@@ -1037,7 +1040,7 @@ impl Store {
                         .and_then(|value| value.clone().into_string());
 
                     log::debug!(
-                        "ID: {} Root Ref: {} Version: {:?} Prev Commit ID: {:?}",
+                        "ID: {} Root Ref: {} Version: {} Prev Commit ID: {:?}",
                         id,
                         root_ref as u64,
                         version,
@@ -1046,7 +1049,7 @@ impl Store {
                 }
             }
             #[cfg(test)]
-            Store::Fake { commits, .. } => {
+            QuarkStore::Fake { commits, .. } => {
                 let commits = commits.borrow();
                 for (id, commit) in commits.iter() {
                     log::debug!("{} {:?} {:?}", id, commit.version, commit.parent_commit_id);
@@ -1059,7 +1062,7 @@ impl Store {
     async fn dump_refs(&self) -> Result<()> {
         log::debug!("---------- Dumping refs... ----------");
         match self {
-            Store::Scylla(session) => {
+            QuarkStore::Scylla(session) => {
                 for row in session
                     .query(
                         format!(
@@ -1092,7 +1095,7 @@ impl Store {
                 }
             }
             #[cfg(test)]
-            Store::Fake { refs, .. } => {
+            QuarkStore::Fake { refs, .. } => {
                 let refs = refs.borrow();
                 for (id, ref_) in refs.iter() {
                     log::debug!(
@@ -1111,7 +1114,7 @@ impl Store {
     async fn dump_objects(&self) -> Result<()> {
         log::debug!("---------- Dumping objects... ----------");
         match self {
-            Store::Scylla(session) => {
+            QuarkStore::Scylla(session) => {
                 for row in session
                     .query(
                         format!("SELECT id FROM {}", session.table_name(OBJECT_TABLE_NAME)),
@@ -1129,7 +1132,7 @@ impl Store {
                 }
             }
             #[cfg(test)]
-            Store::Fake { objects, .. } => {
+            QuarkStore::Fake { objects, .. } => {
                 let objects = objects.borrow();
                 for (id, _) in objects.iter() {
                     log::debug!("{}", id);
@@ -1145,7 +1148,7 @@ impl Store {
         }
 
         match self {
-            Store::Scylla(session) => {
+            QuarkStore::Scylla(session) => {
                 async fn get_table_count(session: &ScyllaSession, table_name: &str) -> Result<i64> {
                     session
                         .query(
@@ -1174,7 +1177,7 @@ impl Store {
                 );
             }
             #[cfg(test)]
-            Store::Fake {
+            QuarkStore::Fake {
                 commits,
                 objects,
                 refs,
@@ -1194,7 +1197,7 @@ impl Store {
 
     pub async fn reset_db(&self) -> Result<()> {
         match self {
-            Store::Scylla(session) => {
+            QuarkStore::Scylla(session) => {
                 let table_names = [
                     COMMIT_TABLE_NAME,
                     OBJECT_TABLE_NAME,
@@ -1208,7 +1211,7 @@ impl Store {
                 }
             }
             #[cfg(test)]
-            Store::Fake {
+            QuarkStore::Fake {
                 commits,
                 objects,
                 refs,
@@ -1315,7 +1318,7 @@ mod tests {
             items: vec!["1".to_string(), "2".to_string(), "3".to_string()],
         };
 
-        let store = Store::test();
+        let store = QuarkStore::test();
 
         let refs = list.serialize(SerializeCx { store: &store }).await.unwrap();
 

@@ -4,8 +4,8 @@ use musli::{Decode, Encode};
 use rand::Rng;
 use std::{fmt::Display, time::Instant};
 
-const CYCLES: usize = 100;
-const REPLICAS: usize = 3;
+const CYCLES: usize = 25;
+const REPLICAS: usize = 10;
 const CHAR_INSERTION_COUNT_PER_CYCLE: usize = 10;
 
 #[derive(Clone, Decode, Encode, Hash, Default, PartialEq, Eq, Debug)]
@@ -98,7 +98,7 @@ async fn main() -> Result<()> {
     println!("Setting up datastores...");
     let mut stores = Vec::with_capacity(REPLICAS);
     for _ in 0..REPLICAS + 1 {
-        let store = Store::setup(hostname.clone(), "test").await.unwrap();
+        let store = QuarkStore::setup(hostname.clone(), "test").await.unwrap();
         stores.push(Some(store));
     }
 
