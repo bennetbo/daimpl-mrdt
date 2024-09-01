@@ -1,4 +1,3 @@
-use list::MrdtList;
 use mrdt_rs::*;
 use musli::{Decode, Encode};
 use rand::Rng;
@@ -9,9 +8,9 @@ use std::{
 };
 use tokio::time::interval;
 
-#[derive(Clone, Decode, Encode, Hash, Default, PartialEq, Eq, Debug)]
+#[derive(Default, Clone, Decode, Encode, Hash, PartialEq, Eq, Debug)]
 struct Document {
-    contents: MrdtList<Character>,
+    contents: Vec<Character>,
 }
 
 #[derive(Clone, Decode, Encode, Hash, PartialEq, Eq, Debug, PartialOrd, Ord)]
@@ -22,15 +21,13 @@ pub struct Character {
 
 impl Document {
     pub fn from_str(value: &str) -> Self {
-        let mut document = Self {
-            contents: MrdtList::default(),
-        };
+        let mut document = Self::default();
         document.append_str(value);
         document
     }
 
     pub fn append(&mut self, value: char) {
-        self.contents.add(Character {
+        self.contents.push(Character {
             id: Id::gen(),
             value,
         });
@@ -67,10 +64,23 @@ impl Display for Document {
     }
 }
 
-impl Mergeable<Document> for Document {
-    fn merge(lca: &Document, left: &Document, right: &Document) -> Document {
-        let contents = MrdtList::merge(&lca.contents, &left.contents, &right.contents);
-        Document { contents }
+impl Mergeable for Document {
+    fn merge(lca: &Self, left: &Self, right: &Self) -> Self {
+        let contents = Mergeable::merge(&lca.contents, &left.contents, &right.contents);
+        Self { contents }
+    }
+}
+
+impl Serialize for Document {
+    async fn serialize(&self, cx: SerializeCx<'_>) -> Result<Vec<Ref>> {
+        self.contents.serialize(cx).await
+    }
+}
+
+impl Deserialize for Document {
+    async fn deserialize(root: Ref, cx: DeserializeCx<'_>) -> Result<Self> {
+        let contents = Vec::deserialize(root, cx).await?;
+        Ok(Self { contents })
     }
 }
 
@@ -102,19 +112,14 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    env_logger::init();
+
     let args = Args::parse();
     let hostname = std::env::var("SCYLLA_URL").unwrap_or_else(|_| "127.0.0.1:9042".to_string());
 
-    if let Some(gen_ids) = args.gen_ids {
-        for _ in 0..gen_ids {
-            println!("{}", Id::gen().to_string());
-        }
-        return Ok(());
-    }
-
     if args.setup {
         println!("Setting up database...");
-        let store = setup_store(hostname.clone(), "test").await.unwrap();
+        let store = QuarkStore::setup(hostname.clone(), "test").await.unwrap();
         println!("Connected to database!");
         let main_replica = Id::gen();
         let document = Document::from_str(include_str!("../data/text.txt"));
@@ -125,6 +130,23 @@ async fn main() -> Result<()> {
             .await
             .unwrap();
         println!("Setup complete!");
+
+        let gen_ids = args.gen_ids.unwrap_or(2);
+        let ids = (0..gen_ids)
+            .map(|_| Id::gen().to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        for i in 0..gen_ids {
+            println!(
+                "cargo r --release --example document_latency -- --replicas {ids} --index {i}"
+            );
+        }
+        println!("Or with tracing...");
+        for i in 0..gen_ids {
+            println!(
+                "RUST_LOG=debug cargo r --release --example document_latency -- --replicas {ids} --index {i}"
+            );
+        }
         return Ok(());
     }
 
@@ -139,14 +161,14 @@ async fn main() -> Result<()> {
     let replica_id = replica_ids.remove(args.index);
 
     let hostname = std::env::var("SCYLLA_URL").unwrap_or_else(|_| "127.0.0.1:9042".to_string());
-    let store = setup_store(hostname.clone(), "test").await.unwrap();
+    let store = QuarkStore::setup(hostname.clone(), "test").await.unwrap();
 
     let mut replica = Replica::clone(replica_id, store).await.unwrap();
 
     let mut delay = interval(Duration::from_millis(250));
 
     let mut document_version = replica.latest_commit().version.clone();
-    let mut document: Document = replica.latest_object().await.unwrap();
+    let mut document: Document = replica.latest_object().await.unwrap().unwrap();
 
     println!("Running cycles...");
 
@@ -182,48 +204,55 @@ async fn main() -> Result<()> {
 
         // Insert the character at a random position
         let random_position = rand::thread_rng().gen_range(0..document.len());
-        document.insert(random_position, random_char);
+        // document.insert(random_position, random_char);
+        document.append(random_char);
 
-        let curr_document: Document = replica.latest_object().await.unwrap();
+        let mut merged_document = None;
 
         while let Ok(replica_id_to_merge_with) = rx.try_recv() {
             println!(
                 "Received merge request for replica {}",
                 replica_id_to_merge_with
             );
-            replica
+            let (_, document) = replica
                 .merge_with::<Document>(replica_id_to_merge_with)
                 .await
                 .unwrap();
+            merged_document = Some(document);
         }
 
-        if replica.latest_version() != &document_version {
+        let mut measure_latency = false;
+        if let Some(merged_document) = merged_document {
             println!("Merge occurred in background, merging with local version...");
             //We need to merge again, because there occured a merge while we were inserting a new character
             let lca_version = VectorClock::lca(&replica.latest_version(), &document_version);
             let lca_commit = replica
                 .store()
-                .resolve_commit_by_version(lca_version)
+                .resolve_commit_for_version(lca_version)
                 .await
                 .unwrap();
             let lca_object = replica
                 .store()
-                .resolve::<Document>(lca_commit.object_ref)
+                .resolve::<Document>(lca_commit.root_ref)
                 .await
+                .unwrap()
                 .unwrap();
 
-            document = Document::merge(&lca_object, &curr_document, &document);
+            document = Document::merge(&lca_object, &merged_document, &document);
+            measure_latency = true;
         }
 
         let commit = replica.commit_object(&document).await.unwrap();
         document_version = commit.version.clone();
 
-        let elapsed_ms = latency.elapsed().as_millis();
-        latencies.push((document.len(), elapsed_ms));
-        println!(
-            "Inserted '{}' at position {}, {} ms elapsed",
-            random_char, random_position, elapsed_ms
-        );
+        if measure_latency {
+            let elapsed_ms = latency.elapsed().as_millis();
+            latencies.push((document.len(), elapsed_ms));
+            println!(
+                "Inserted '{}' at position {}, {} ms elapsed",
+                random_char, random_position, elapsed_ms
+            );
+        }
     }
 
     STOP.store(true, Ordering::Relaxed);
@@ -240,7 +269,7 @@ async fn main() -> Result<()> {
             .await
             .unwrap();
     }
-    let document: Document = replica.latest_object().await.unwrap();
+    let document: Document = replica.latest_object().await.unwrap().unwrap();
 
     std::fs::write(
         format!("data/document_latency_{}.txt", replica_id.to_string()),

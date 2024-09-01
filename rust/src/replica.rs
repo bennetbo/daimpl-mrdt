@@ -1,17 +1,15 @@
 use super::*;
-use musli::{de::DecodeOwned, mode::Binary, Encode};
-use std::hash::Hash;
 
 pub type ReplicaId = Id;
 
 pub struct Replica {
     id: ReplicaId,
-    store: Store,
+    store: QuarkStore,
     latest_commit: Commit,
 }
 
 impl Replica {
-    pub async fn clone(id: ReplicaId, store: Store) -> Result<Self> {
+    pub async fn clone(id: ReplicaId, store: QuarkStore) -> Result<Self> {
         let latest_commit = store.clone(id).await?;
         Ok(Self {
             id,
@@ -21,7 +19,7 @@ impl Replica {
     }
 
     /// Returns the underlying store of the replica.
-    pub fn store(&self) -> &Store {
+    pub fn store(&self) -> &QuarkStore {
         &self.store
     }
 
@@ -41,12 +39,12 @@ impl Replica {
     }
 
     /// Resolves and returns the object of the lastest commit from the store.
-    pub async fn latest_object<T: Hash + DecodeOwned<Binary>>(&self) -> Result<T> {
-        self.store.resolve(self.latest_commit.object_ref).await
+    pub async fn latest_object<T: Deserialize>(&self) -> Result<Option<T>> {
+        self.store.resolve(self.latest_commit.root_ref).await
     }
 
     /// Commits the given object to the store and returns the resulting commit.
-    pub async fn commit_object<T: Hash + Encode<Binary>>(&mut self, object: &T) -> Result<Commit> {
+    pub async fn commit_object<T: Serialize>(&mut self, object: &T) -> Result<Commit> {
         let object_ref = self.store.insert(object).await?;
         self.commit(object_ref, self.next_version()).await
     }
@@ -59,32 +57,42 @@ impl Replica {
     }
 
     /// Merges the current replica's state with another replica and commits the merged object.
-    pub async fn merge_with<T: Hash + Encode<Binary> + DecodeOwned<Binary> + Mergeable<T>>(
+    pub async fn merge_with<T: Serialize + Deserialize + Mergeable>(
         &mut self,
         other_replica: ReplicaId,
-    ) -> Result<Commit> {
+    ) -> Result<(Commit, T)> {
         let commit_to_merge_with = self
             .store
             .latest_commit_for_replica(other_replica)
             .await?
             .with_context(|| "Replica has no commits")?;
 
-        let current_object = self.latest_object::<T>().await?;
+        let other_replica_version = commit_to_merge_with.version;
+
+        let current_object = self
+            .latest_object::<T>()
+            .await?
+            .with_context(|| "Empty object")?;
         let object_to_merge_with = self
             .store
-            .resolve::<T>(commit_to_merge_with.object_ref)
-            .await?;
+            .resolve::<T>(commit_to_merge_with.root_ref)
+            .await?
+            .with_context(|| "LCA object is empty")?;
 
-        let lca = VectorClock::lca(self.latest_version(), &commit_to_merge_with.version);
-        let lca_commit = self.store.resolve_commit_by_version(lca).await.unwrap();
+        let lca = VectorClock::lca(self.latest_version(), &other_replica_version);
+        let lca_commit = self.store.resolve_commit_for_version(lca.clone()).await?;
         let lca_object = self
             .store
-            .resolve::<T>(lca_commit.object_ref)
-            .await
-            .unwrap();
+            .resolve::<T>(lca_commit.root_ref)
+            .await?
+            .with_context(|| "LCA object is empty")?;
 
         let merged_object = T::merge(&lca_object, &current_object, &object_to_merge_with);
-        self.commit_object(&merged_object).await
+
+        let object_ref = self.store.insert(&merged_object).await?;
+        let version = VectorClock::merge(self.latest_version(), &other_replica_version);
+        let commit = self.commit(object_ref, version).await?;
+        Ok((commit, merged_object))
     }
 
     fn next_version(&self) -> VectorClock {

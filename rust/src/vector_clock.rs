@@ -1,9 +1,17 @@
+use std::fmt::Display;
+
 use super::*;
 use musli::{Decode, Encode};
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct VectorClock {
-    timestamps: fxhash::FxHashMap<Id, Timestamp>,
+    timestamps: HashMap<Id, Timestamp>,
+}
+
+impl Display for VectorClock {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.timestamps)
+    }
 }
 
 impl VectorClock {

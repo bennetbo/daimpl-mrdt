@@ -1,9 +1,8 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use list::MrdtList;
 use mrdt_rs::*;
 
-fn set_merge(iterations: u64) -> MrdtSet<u64> {
-    let mut lca = MrdtSet::default();
+fn set_merge(iterations: u64) -> HashSet<u64> {
+    let mut lca = HashSet::default();
 
     for i in 0..iterations {
         let mut set1 = lca.clone();
@@ -12,23 +11,23 @@ fn set_merge(iterations: u64) -> MrdtSet<u64> {
         set1.insert(i);
         set2.insert(i + 1);
 
-        lca = MrdtSet::merge(&lca, &set1, &set2);
+        lca = Mergeable::merge(&lca, &set1, &set2);
     }
 
     lca
 }
 
-fn list_merge(iterations: u64) -> MrdtList<u64> {
-    let mut lca = MrdtList::default();
+fn list_merge(iterations: u64) -> Vec<u64> {
+    let mut lca = Vec::default();
 
     for i in 0..iterations {
         let mut list1 = lca.clone();
         let mut list2 = lca.clone();
 
-        list1.add(i);
-        list2.add(i + 1);
+        list1.push(i);
+        list2.push(i + 1);
 
-        lca = MrdtList::merge(&lca, &list1, &list2);
+        lca = Mergeable::merge(&lca, &list1, &list2);
     }
 
     lca

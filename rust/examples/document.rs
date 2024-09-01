@@ -1,17 +1,16 @@
 use fxhash::FxHashMap;
-use list::MrdtList;
 use mrdt_rs::*;
 use musli::{Decode, Encode};
 use rand::Rng;
 use std::{fmt::Display, time::Instant};
 
-const CYCLES: usize = 100;
-const REPLICAS: usize = 3;
+const CYCLES: usize = 25;
+const REPLICAS: usize = 10;
 const CHAR_INSERTION_COUNT_PER_CYCLE: usize = 10;
 
 #[derive(Clone, Decode, Encode, Hash, Default, PartialEq, Eq, Debug)]
 struct Document {
-    contents: MrdtList<Character>,
+    contents: Vec<Character>,
 }
 
 #[derive(Clone, Decode, Encode, Hash, PartialEq, Eq, Debug, PartialOrd, Ord)]
@@ -23,14 +22,14 @@ pub struct Character {
 impl Document {
     pub fn from_str(value: &str) -> Self {
         let mut document = Self {
-            contents: MrdtList::default(),
+            contents: Vec::default(),
         };
         document.append_str(value);
         document
     }
 
     pub fn append(&mut self, value: char) {
-        self.contents.add(Character {
+        self.contents.push(Character {
             id: Id::gen(),
             value,
         });
@@ -67,16 +66,31 @@ impl Display for Document {
     }
 }
 
-impl Mergeable<Document> for Document {
+impl Mergeable for Document {
     fn merge(lca: &Document, left: &Document, right: &Document) -> Document {
         Document {
-            contents: MrdtList::merge(&lca.contents, &left.contents, &right.contents),
+            contents: Mergeable::merge(&lca.contents, &left.contents, &right.contents),
         }
+    }
+}
+
+impl Serialize for Document {
+    async fn serialize(&self, cx: SerializeCx<'_>) -> Result<Vec<Ref>> {
+        self.contents.serialize(cx).await
+    }
+}
+
+impl Deserialize for Document {
+    async fn deserialize(root: Ref, cx: DeserializeCx<'_>) -> Result<Self> {
+        let contents = Vec::deserialize(root, cx).await?;
+        Ok(Self { contents })
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    env_logger::init();
+
     const INITIAL_TEXT: &str = "-";
 
     let hostname = std::env::var("SCYLLA_URL").unwrap_or_else(|_| "127.0.0.1:9042".to_string());
@@ -84,7 +98,7 @@ async fn main() -> Result<()> {
     println!("Setting up datastores...");
     let mut stores = Vec::with_capacity(REPLICAS);
     for _ in 0..REPLICAS + 1 {
-        let store = setup_store(hostname.clone(), "test").await.unwrap();
+        let store = QuarkStore::setup(hostname.clone(), "test").await.unwrap();
         stores.push(Some(store));
     }
 
@@ -124,7 +138,7 @@ async fn main() -> Result<()> {
                 .merge_with::<Document>(replica_ids[merge_with_replica_ix])
                 .await
                 .unwrap();
-            let mut document: Document = replica.latest_object().await.unwrap();
+            let mut document: Document = replica.latest_object().await.unwrap().unwrap();
 
             let mut rng = rand::thread_rng();
             let char = (replica_ix as u8 + b'a') as char;
@@ -147,7 +161,7 @@ async fn main() -> Result<()> {
 
     let mut document_contents = Vec::with_capacity(REPLICAS);
     for replica in replicas.iter_mut() {
-        let document: Document = replica.latest_object().await.unwrap();
+        let document: Document = replica.latest_object().await.unwrap().unwrap();
         document_contents.push(document.to_string());
     }
 
@@ -158,7 +172,7 @@ async fn main() -> Result<()> {
     }
 
     let replica = replicas.iter_mut().next().unwrap();
-    let document: Document = replica.latest_object().await.unwrap();
+    let document: Document = replica.latest_object().await.unwrap().unwrap();
     let text = document.to_string();
 
     assert_eq!(

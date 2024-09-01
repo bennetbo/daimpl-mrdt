@@ -74,3 +74,19 @@ Status & open questions:
     - What have we done? What code have we written
     - Findings - Cite
       - Inconsistencies
+
+Meet Aug 22
+Status & open questions:
+- Ob set merge is much faster now
+- We have a working version of the quark store with diffing 🎉
+- We started writing the blog post
+
+Open questions:
+- Limit on pages?
+- Report style? Blog post vs Scientific report?
+
+TODO:
+- Benchmark against REScala
+- Experiment with storing tree-like structure in Quark
+- Evaluate document benchmark
+- Write blog post

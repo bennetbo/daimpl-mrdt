@@ -1,14 +1,12 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use list::MrdtList;
 use mrdt_rs::*;
 use musli::{Decode, Encode};
-use ord::MrdtOrd;
 use rand::Rng;
 use std::fmt::Display;
 
 #[derive(Clone, Decode, Encode, Hash, Default, PartialEq, Eq, Debug)]
 struct Document {
-    contents: MrdtList<Character>,
+    contents: Vec<Character>,
 }
 
 #[derive(Clone, Decode, Encode, Hash, PartialEq, Eq, Debug, PartialOrd, Ord)]
@@ -23,7 +21,7 @@ impl Document {
     }
 
     pub fn append(&mut self, value: char) {
-        self.contents.add(Character {
+        self.contents.push(Character {
             id: Id::gen(),
             value,
         });
@@ -50,41 +48,15 @@ impl Display for Document {
     }
 }
 
-impl Mergeable<Document> for Document {
-    fn merge(lca: &Document, left: &Document, right: &Document) -> Document {
-        let contents = MrdtList::merge(&lca.contents, &left.contents, &right.contents);
+impl Mergeable for Document {
+    fn merge(lca: &Self, left: &Self, right: &Self) -> Self {
+        let contents = Mergeable::merge(&lca.contents, &left.contents, &right.contents);
         Document { contents }
     }
 }
 
 fn document_merge(lca: &Document, left: &Document, right: &Document) -> Document {
     Document::merge(&lca, &left, &right)
-}
-
-fn document_merge_mem_only(
-    lca: &Document,
-    left: &Document,
-    right: &Document,
-) -> MrdtSet<Character> {
-    MrdtSet::merge(
-        lca.contents.mem(),
-        &left.contents.mem(),
-        &right.contents.mem(),
-    )
-}
-
-fn document_merge_ord_only(
-    lca: &Document,
-    left: &Document,
-    right: &Document,
-    merged_set: &MrdtSet<Character>,
-) -> MrdtOrd<Character> {
-    MrdtOrd::merge(
-        lca.contents.ord(),
-        &left.contents.ord(),
-        &right.contents.ord(),
-        merged_set,
-    )
 }
 
 fn document_with_random_chars(document_length: usize) -> Document {
@@ -115,37 +87,6 @@ fn criterion_benchmark(c: &mut Criterion) {
         let mut right = lca.clone();
         document_insert_random_chars(&mut left, *insertion_count);
         document_insert_random_chars(&mut right, *insertion_count);
-
-        let merged_set = document_merge_mem_only(&lca, &left, &right);
-
-        group.bench_function(
-            format!(
-                "document_merge (mem only) length: {} insertions: {}",
-                len, insertion_count
-            ),
-            |b| {
-                b.iter(|| {
-                    document_merge_mem_only(black_box(&lca), black_box(&left), black_box(&right))
-                })
-            },
-        );
-
-        group.bench_function(
-            format!(
-                "document_merge (ord only) length: {} insertions: {}",
-                len, insertion_count
-            ),
-            |b| {
-                b.iter(|| {
-                    document_merge_ord_only(
-                        black_box(&lca),
-                        black_box(&left),
-                        black_box(&right),
-                        black_box(&merged_set),
-                    )
-                })
-            },
-        );
 
         group.bench_function(
             format!(

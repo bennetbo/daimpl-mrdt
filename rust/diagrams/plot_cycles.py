@@ -9,7 +9,7 @@ def read_data(filename):
             times.append(int(parts[3]))
     return cycles, times
 
-variants = [('../data/replica_3.txt', '3 Replicas'), ('../data/replica_5.txt', '5 Replicas'), ('../data/replica_10.txt', '10 Replicas')]
+variants = [('data/replica_3.txt', '3 Replicas'), ('data/replica_5.txt', '5 Replicas'), ('data/replica_10.txt', '10 Replicas')]
 colors = ['red', 'blue', 'green']
 
 plt.figure(figsize=(12, 7))

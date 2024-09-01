@@ -1,9 +1,7 @@
 pub mod list;
-pub mod ord;
-pub mod queue;
+pub mod quark;
 pub mod replica;
 pub mod set;
-pub mod storage;
 pub mod vector_clock;
 
 pub use anyhow::{Context, Result};
@@ -11,10 +9,16 @@ use musli::{
     mode::{Binary, Text},
     Decode, Encode,
 };
+pub use quark::*;
 pub use replica::*;
-pub use set::*;
-pub use storage::*;
 pub use vector_clock::*;
+
+pub type HashSet<T> = fxhash::FxHashSet<T>;
+pub type HashMap<K, V> = fxhash::FxHashMap<K, V>;
+
+pub trait Mergeable {
+    fn merge(lca: &Self, left: &Self, right: &Self) -> Self;
+}
 
 pub trait MrdtItem:
     PartialEq
@@ -119,15 +123,8 @@ impl From<Timestamp> for u32 {
     }
 }
 
-#[allow(async_fn_in_trait)]
-pub trait Mergeable<T> {
-    fn merge(lca: &T, left: &T, right: &T) -> T;
-}
-
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
-
     use super::*;
 
     #[test]
