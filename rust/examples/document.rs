@@ -1,5 +1,4 @@
 use fxhash::FxHashMap;
-use list::MrdtList;
 use mrdt_rs::*;
 use musli::{Decode, Encode};
 use rand::Rng;
@@ -11,7 +10,7 @@ const CHAR_INSERTION_COUNT_PER_CYCLE: usize = 10;
 
 #[derive(Clone, Decode, Encode, Hash, Default, PartialEq, Eq, Debug)]
 struct Document {
-    contents: MrdtList<Character>,
+    contents: Vec<Character>,
 }
 
 #[derive(Clone, Decode, Encode, Hash, PartialEq, Eq, Debug, PartialOrd, Ord)]
@@ -23,14 +22,14 @@ pub struct Character {
 impl Document {
     pub fn from_str(value: &str) -> Self {
         let mut document = Self {
-            contents: MrdtList::default(),
+            contents: Vec::default(),
         };
         document.append_str(value);
         document
     }
 
     pub fn append(&mut self, value: char) {
-        self.contents.add(Character {
+        self.contents.push(Character {
             id: Id::gen(),
             value,
         });
@@ -67,10 +66,10 @@ impl Display for Document {
     }
 }
 
-impl Mergeable<Document> for Document {
+impl Mergeable for Document {
     fn merge(lca: &Document, left: &Document, right: &Document) -> Document {
         Document {
-            contents: MrdtList::merge(&lca.contents, &left.contents, &right.contents),
+            contents: Mergeable::merge(&lca.contents, &left.contents, &right.contents),
         }
     }
 }
@@ -83,7 +82,7 @@ impl Serialize for Document {
 
 impl Deserialize for Document {
     async fn deserialize(root: Ref, cx: DeserializeCx<'_>) -> Result<Self> {
-        let contents = MrdtList::deserialize(root, cx).await?;
+        let contents = Vec::deserialize(root, cx).await?;
         Ok(Self { contents })
     }
 }
@@ -108,7 +107,7 @@ async fn main() -> Result<()> {
     // by manually establishing a base commit
     let main_replica = Id::gen();
     let base_set_ref = base_store
-        .insert_versioned(&Document::from_str(INITIAL_TEXT))
+        .insert(&Document::from_str(INITIAL_TEXT))
         .await
         .unwrap();
     let _base_commit = base_store

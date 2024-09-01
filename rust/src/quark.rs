@@ -16,7 +16,7 @@ use std::{fmt, time::Instant};
 #[cfg(test)]
 use std::{cell::RefCell, collections::HashMap};
 
-use crate::{Id, ReplicaId, VectorClock};
+use crate::{HashSet, Id, MrdtItem, ReplicaId, VectorClock};
 
 const ENCODING: Encoding<OPTIONS> = Encoding::new().with_options();
 
@@ -26,6 +26,27 @@ pub struct Ref {
     pub left: Option<u64>,
     pub right: Option<u64>,
     pub object_ref: u64,
+}
+
+impl Ref {
+    pub fn compute(object_ref: u64, left: Option<u64>, right: Option<u64>) -> Self {
+        let mut hasher = std::hash::DefaultHasher::new();
+        object_ref.hash(&mut hasher);
+        if let Some(left) = left {
+            left.hash(&mut hasher);
+        }
+        if let Some(right) = right {
+            right.hash(&mut hasher);
+        }
+        let id = hasher.finish();
+
+        Self {
+            id,
+            left,
+            right,
+            object_ref,
+        }
+    }
 }
 
 pub struct ScyllaSession {
@@ -120,9 +141,9 @@ pub trait ObjectStore {
 }
 
 #[allow(async_fn_in_trait)]
-pub trait VersionedStore {
-    async fn resolve_versioned<T: Deserialize + fmt::Debug>(&self, root: u64) -> Result<Option<T>>;
-    async fn insert_versioned<T: Serialize + fmt::Debug>(&self, object: &T) -> Result<u64>;
+pub trait NodeStore {
+    async fn resolve<T: Deserialize + fmt::Debug>(&self, root: u64) -> Result<Option<T>>;
+    async fn insert<T: Serialize + fmt::Debug>(&self, object: &T) -> Result<u64>;
 }
 
 #[allow(async_fn_in_trait)]
@@ -325,8 +346,8 @@ impl GitLikeStore for Store {
                         (&version_bytes,),
                     )
                     .await?
-                    .single_row()
-                    .with_context(|| "Failed to select single row")?;
+                    .first_row()
+                    .with_context(|| "Failed to select the first row")?;
 
                 let commit_id = result.columns[0]
                     .as_ref()
@@ -758,8 +779,8 @@ impl ObjectStore for Store {
     }
 }
 
-impl VersionedStore for Store {
-    async fn resolve_versioned<T: Deserialize + fmt::Debug>(&self, root: u64) -> Result<Option<T>> {
+impl NodeStore for Store {
+    async fn resolve<T: Deserialize + fmt::Debug>(&self, root: u64) -> Result<Option<T>> {
         let mut instant = None;
         if log_enabled!(log::Level::Debug) {
             instant = Some(Instant::now());
@@ -778,7 +799,7 @@ impl VersionedStore for Store {
         Ok(Some(result))
     }
 
-    async fn insert_versioned<T: Serialize + fmt::Debug>(&self, object: &T) -> Result<u64> {
+    async fn insert<T: Serialize + fmt::Debug>(&self, object: &T) -> Result<u64> {
         let mut insert_versioned_time = None;
         if log_enabled!(log::Level::Debug) {
             insert_versioned_time = Some(Instant::now());
@@ -871,13 +892,9 @@ impl SerializeCx<'_> {
         let mut refs = Vec::with_capacity(objects.len());
         let object_refs = self.insert_objects(&objects).await?;
         for object_ref in object_refs {
-            refs.push(Ref {
-                id: object_ref,
-                left: prev_hash,
-                right: None,
-                object_ref,
-            });
-            prev_hash = Some(object_ref);
+            let reference = Ref::compute(object_ref, prev_hash, None);
+            prev_hash = Some(reference.id);
+            refs.push(reference);
         }
         Ok(refs)
     }
@@ -933,7 +950,198 @@ impl DeserializeCx<'_> {
 
 // Some debugging tools, which can be helpful for benchmarks
 impl Store {
+    pub async fn dump(&self) -> Result<()> {
+        if !log_enabled!(log::Level::Debug) {
+            return Ok(());
+        }
+
+        self.dump_table_counts().await?;
+        self.dump_replicas().await?;
+        self.dump_commits().await?;
+        self.dump_refs().await?;
+        self.dump_objects().await?;
+        Ok(())
+    }
+
+    async fn dump_replicas(&self) -> Result<()> {
+        log::debug!("---------- Dumping replicas... ----------");
+        match self {
+            Store::Scylla(session) => {
+                for row in session
+                    .query(
+                        format!(
+                            "SELECT id, commit_id FROM {}",
+                            session.table_name(REPLICA_TABLE_NAME)
+                        ),
+                        (),
+                    )
+                    .await?
+                    .rows()?
+                {
+                    let id = row.columns[0]
+                        .as_ref()
+                        .and_then(|value| value.clone().into_string())
+                        .with_context(|| "Failed to deserialize value")?;
+                    let latest_commit_id = row.columns[1]
+                        .as_ref()
+                        .and_then(|value| value.clone().into_string());
+
+                    log::debug!("{} {:?}", id, latest_commit_id);
+                }
+            }
+            #[cfg(test)]
+            Store::Fake { replicas, .. } => {
+                let replicas = replicas.borrow();
+                for (id, commit) in replicas.iter() {
+                    log::debug!("{} {}", id, commit);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn dump_commits(&self) -> Result<()> {
+        log::debug!("---------- Dumping commits... ----------");
+        match self {
+            Store::Scylla(session) => {
+                for row in session
+                    .query(
+                        format!(
+                            "SELECT id, root_ref, version, prev_commit_id FROM {}",
+                            session.table_name(COMMIT_TABLE_NAME)
+                        ),
+                        (),
+                    )
+                    .await?
+                    .rows()?
+                {
+                    let id = row.columns[0]
+                        .as_ref()
+                        .and_then(|value| value.clone().into_string())
+                        .with_context(|| "Failed to deserialize value")?;
+                    let root_ref = row.columns[1]
+                        .as_ref()
+                        .and_then(|value| value.as_bigint())
+                        .with_context(|| "Failed to deserialize root ref")?;
+                    let version_blob = row.columns[2]
+                        .as_ref()
+                        .and_then(|value| value.clone().into_blob())
+                        .with_context(|| "Failed to deserialize value")?;
+                    let version: VectorClock = ENCODING
+                        .decode(version_blob.as_slice())
+                        .with_context(|| "Failed to serialize version")?;
+                    let prev_commit_id = row.columns[3]
+                        .as_ref()
+                        .and_then(|value| value.clone().into_string());
+
+                    log::debug!(
+                        "ID: {} Root Ref: {} Version: {:?} Prev Commit ID: {:?}",
+                        id,
+                        root_ref as u64,
+                        version,
+                        prev_commit_id
+                    );
+                }
+            }
+            #[cfg(test)]
+            Store::Fake { commits, .. } => {
+                let commits = commits.borrow();
+                for (id, commit) in commits.iter() {
+                    log::debug!("{} {:?} {:?}", id, commit.version, commit.parent_commit_id);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn dump_refs(&self) -> Result<()> {
+        log::debug!("---------- Dumping refs... ----------");
+        match self {
+            Store::Scylla(session) => {
+                for row in session
+                    .query(
+                        format!(
+                            "SELECT id, left, right, object_ref FROM {}",
+                            session.table_name(REF_TABLE_NAME)
+                        ),
+                        (),
+                    )
+                    .await?
+                    .rows()?
+                {
+                    let id = row.columns[0]
+                        .as_ref()
+                        .and_then(|value| value.as_bigint())
+                        .with_context(|| "Failed to deserialize id")?;
+                    let left = row.columns[1].as_ref().and_then(|value| value.as_bigint());
+                    let right = row.columns[2].as_ref().and_then(|value| value.as_bigint());
+                    let object_ref = row.columns[3]
+                        .as_ref()
+                        .and_then(|value| value.as_bigint())
+                        .with_context(|| "Failed to deserialize object_ref")?;
+
+                    log::debug!(
+                        "ID: {}, Left: {:?}, Right: {:?}, Object Ref: {}",
+                        id as u64,
+                        left.map(|id| id as u64),
+                        right.map(|id| id as u64),
+                        object_ref as u64
+                    );
+                }
+            }
+            #[cfg(test)]
+            Store::Fake { refs, .. } => {
+                let refs = refs.borrow();
+                for (id, ref_) in refs.iter() {
+                    log::debug!(
+                        "ID: {}, Left: {:?}, Right: {:?}, Object Ref: {}",
+                        id,
+                        ref_.left,
+                        ref_.right,
+                        ref_.object_ref
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn dump_objects(&self) -> Result<()> {
+        log::debug!("---------- Dumping objects... ----------");
+        match self {
+            Store::Scylla(session) => {
+                for row in session
+                    .query(
+                        format!("SELECT id FROM {}", session.table_name(OBJECT_TABLE_NAME)),
+                        (),
+                    )
+                    .await?
+                    .rows()?
+                {
+                    let id = row.columns[0]
+                        .as_ref()
+                        .and_then(|value| value.as_bigint())
+                        .with_context(|| "Failed to deserialize id")?;
+
+                    log::debug!("{}", id as u64);
+                }
+            }
+            #[cfg(test)]
+            Store::Fake { objects, .. } => {
+                let objects = objects.borrow();
+                for (id, _) in objects.iter() {
+                    log::debug!("{}", id);
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub async fn dump_table_counts(&self) -> Result<()> {
+        if !log_enabled!(log::Level::Debug) {
+            return Ok(());
+        }
+
         match self {
             Store::Scylla(session) => {
                 async fn get_table_count(session: &ScyllaSession, table_name: &str) -> Result<i64> {
@@ -1011,6 +1219,32 @@ impl Store {
             }
         }
         Ok(())
+    }
+}
+
+impl<T: MrdtItem> Serialize for HashSet<T> {
+    async fn serialize(&self, cx: SerializeCx<'_>) -> Result<Vec<Ref>> {
+        cx.serialize_iter(self.iter()).await
+    }
+}
+
+impl<T: MrdtItem> Deserialize for HashSet<T> {
+    async fn deserialize(root: Ref, cx: DeserializeCx<'_>) -> Result<Self> {
+        let items = cx.deserialize_iter(root).await?;
+        Ok(items.into_iter().collect())
+    }
+}
+
+impl<T: MrdtItem> Serialize for Vec<T> {
+    async fn serialize(&self, cx: SerializeCx<'_>) -> Result<Vec<Ref>> {
+        cx.serialize_iter(self.iter()).await
+    }
+}
+
+impl<T: MrdtItem> Deserialize for Vec<T> {
+    async fn deserialize(root: Ref, cx: DeserializeCx<'_>) -> Result<Self> {
+        let items = cx.deserialize_iter(root).await?;
+        Ok(items.into_iter().collect())
     }
 }
 

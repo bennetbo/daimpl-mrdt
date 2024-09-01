@@ -3,7 +3,7 @@ use musli::{Decode, Encode};
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct VectorClock {
-    timestamps: fxhash::FxHashMap<Id, Timestamp>,
+    timestamps: HashMap<Id, Timestamp>,
 }
 
 impl VectorClock {

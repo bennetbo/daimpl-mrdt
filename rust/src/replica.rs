@@ -42,14 +42,12 @@ impl Replica {
 
     /// Resolves and returns the object of the lastest commit from the store.
     pub async fn latest_object<T: Deserialize + fmt::Debug>(&self) -> Result<Option<T>> {
-        self.store
-            .resolve_versioned(self.latest_commit.root_ref)
-            .await
+        self.store.resolve(self.latest_commit.root_ref).await
     }
 
     /// Commits the given object to the store and returns the resulting commit.
     pub async fn commit_object<T: Serialize + fmt::Debug>(&mut self, object: &T) -> Result<Commit> {
-        let object_ref = self.store.insert_versioned(object).await?;
+        let object_ref = self.store.insert(object).await?;
         self.commit(object_ref, self.next_version()).await
     }
 
@@ -61,7 +59,7 @@ impl Replica {
     }
 
     /// Merges the current replica's state with another replica and commits the merged object.
-    pub async fn merge_with<T: Serialize + Deserialize + Mergeable<T> + fmt::Debug>(
+    pub async fn merge_with<T: Serialize + Deserialize + Mergeable + fmt::Debug>(
         &mut self,
         other_replica: ReplicaId,
     ) -> Result<(Commit, T)> {
@@ -71,26 +69,31 @@ impl Replica {
             .await?
             .with_context(|| "Replica has no commits")?;
 
+        let other_replica_version = commit_to_merge_with.version;
+
         let current_object = self
             .latest_object::<T>()
             .await?
             .with_context(|| "Empty object")?;
         let object_to_merge_with = self
             .store
-            .resolve_versioned::<T>(commit_to_merge_with.root_ref)
+            .resolve::<T>(commit_to_merge_with.root_ref)
             .await?
             .with_context(|| "LCA object is empty")?;
 
-        let lca = VectorClock::lca(self.latest_version(), &commit_to_merge_with.version);
-        let lca_commit = self.store.resolve_commit_by_version(lca).await?;
+        let lca = VectorClock::lca(self.latest_version(), &other_replica_version);
+        let lca_commit = self.store.resolve_commit_by_version(lca.clone()).await?;
         let lca_object = self
             .store
-            .resolve_versioned::<T>(lca_commit.root_ref)
+            .resolve::<T>(lca_commit.root_ref)
             .await?
             .with_context(|| "LCA object is empty")?;
 
         let merged_object = T::merge(&lca_object, &current_object, &object_to_merge_with);
-        let commit = self.commit_object(&merged_object).await?;
+
+        let object_ref = self.store.insert(&merged_object).await?;
+        let version = VectorClock::merge(self.latest_version(), &other_replica_version);
+        let commit = self.commit(object_ref, version).await?;
 
         Ok((commit, merged_object))
     }

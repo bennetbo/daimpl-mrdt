@@ -1,4 +1,3 @@
-use list::MrdtList;
 use mrdt_rs::*;
 use std::env;
 
@@ -12,15 +11,15 @@ async fn main() -> Result<()> {
 
     store.dump_table_counts().await?;
 
-    let mut list = MrdtList::default();
+    let mut list = Vec::with_capacity(1000);
     for i in 0..1000 {
-        list.add(i);
+        list.push(i);
     }
 
     // TODO: It is unclear how to handle different replicas without a "common" ancestor, we start
     // by manually establishing a base commit
     let main_replica = Id::gen();
-    let base_ref = store.insert_versioned(&list).await.unwrap();
+    let base_ref = store.insert(&list).await.unwrap();
     let _base_commit = store
         .commit(main_replica, VectorClock::default(), base_ref)
         .await
@@ -33,7 +32,7 @@ async fn main() -> Result<()> {
 
     loop {
         for i in 0..10 {
-            list.add(counter + i);
+            list.push(counter + i);
         }
         replica.commit_object(&list).await?;
         counter += 10;

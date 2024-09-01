@@ -1,8 +1,8 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use mrdt_rs::*;
 
-fn set_insert(iterations: u64) -> MrdtSet<u64> {
-    let mut set = MrdtSet::default();
+fn set_insert(iterations: u64) -> HashSet<u64> {
+    let mut set = HashSet::default();
     for i in 0..iterations {
         set.insert(i);
     }

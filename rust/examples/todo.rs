@@ -1,16 +1,16 @@
-use mrdt_rs::{list::MrdtList, Id, Mergeable};
+use mrdt_rs::{Id, Mergeable};
 use musli::{Decode, Encode};
 use std::cmp::Ordering;
 
 #[derive(Clone, Decode, Encode, Hash, PartialEq, Eq, Debug)]
 pub struct TodoStore {
-    pub todos: MrdtList<TodoItem>,
+    pub todos: Vec<TodoItem>,
 }
 
 #[derive(Clone, Decode, Encode, Hash, PartialEq, Eq, Debug)]
 pub struct TodoItem {
     pub done: bool,
-    pub text: MrdtList<Character>,
+    pub text: Vec<Character>,
 }
 
 impl PartialOrd for TodoItem {
@@ -38,17 +38,17 @@ pub struct Character {
     c: char,
 }
 
-impl Mergeable<TodoItem> for TodoItem {
+impl Mergeable for TodoItem {
     fn merge(lca: &TodoItem, left: &TodoItem, right: &TodoItem) -> TodoItem {
-        let text = MrdtList::merge(&lca.text, &left.text, &right.text);
+        let text = Mergeable::merge(&lca.text, &left.text, &right.text);
         let done = left.done || right.done;
         Self { text, done }
     }
 }
 
-impl Mergeable<TodoStore> for TodoStore {
+impl Mergeable for TodoStore {
     fn merge(lca: &TodoStore, left: &TodoStore, right: &TodoStore) -> TodoStore {
-        let todos = MrdtList::merge(&lca.todos, &left.todos, &right.todos);
+        let todos = Mergeable::merge(&lca.todos, &left.todos, &right.todos);
         Self { todos }
     }
 }

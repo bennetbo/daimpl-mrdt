@@ -1,4 +1,3 @@
-use list::MrdtList;
 use mrdt_rs::*;
 use musli::{Decode, Encode};
 use rand::Rng;
@@ -9,9 +8,9 @@ use std::{
 };
 use tokio::time::interval;
 
-#[derive(Clone, Decode, Encode, Hash, Default, PartialEq, Eq, Debug)]
+#[derive(Default, Clone, Decode, Encode, Hash, PartialEq, Eq, Debug)]
 struct Document {
-    contents: MrdtList<Character>,
+    contents: Vec<Character>,
 }
 
 #[derive(Clone, Decode, Encode, Hash, PartialEq, Eq, Debug, PartialOrd, Ord)]
@@ -22,15 +21,13 @@ pub struct Character {
 
 impl Document {
     pub fn from_str(value: &str) -> Self {
-        let mut document = Self {
-            contents: MrdtList::default(),
-        };
+        let mut document = Self::default();
         document.append_str(value);
         document
     }
 
     pub fn append(&mut self, value: char) {
-        self.contents.add(Character {
+        self.contents.push(Character {
             id: Id::gen(),
             value,
         });
@@ -67,10 +64,10 @@ impl Display for Document {
     }
 }
 
-impl Mergeable<Document> for Document {
-    fn merge(lca: &Document, left: &Document, right: &Document) -> Document {
-        let contents = MrdtList::merge(&lca.contents, &left.contents, &right.contents);
-        Document { contents }
+impl Mergeable for Document {
+    fn merge(lca: &Self, left: &Self, right: &Self) -> Self {
+        let contents = Mergeable::merge(&lca.contents, &left.contents, &right.contents);
+        Self { contents }
     }
 }
 
@@ -82,7 +79,7 @@ impl Serialize for Document {
 
 impl Deserialize for Document {
     async fn deserialize(root: Ref, cx: DeserializeCx<'_>) -> Result<Self> {
-        let contents = MrdtList::deserialize(root, cx).await?;
+        let contents = Vec::deserialize(root, cx).await?;
         Ok(Self { contents })
     }
 }
@@ -147,7 +144,7 @@ async fn main() -> Result<()> {
         let main_replica = Id::gen();
         let document = Document::from_str(include_str!("../data/text.txt"));
         println!("Created document");
-        let base_set_ref = store.insert_versioned(&document).await.unwrap();
+        let base_set_ref = store.insert(&document).await.unwrap();
         let _base_commit = store
             .commit(main_replica, VectorClock::default(), base_set_ref)
             .await
@@ -237,7 +234,7 @@ async fn main() -> Result<()> {
                 .unwrap();
             let lca_object = replica
                 .store()
-                .resolve_versioned::<Document>(lca_commit.root_ref)
+                .resolve::<Document>(lca_commit.root_ref)
                 .await
                 .unwrap()
                 .unwrap();
