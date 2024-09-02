@@ -39,16 +39,6 @@ impl Document {
         }
     }
 
-    pub fn insert(&mut self, idx: usize, value: char) {
-        self.contents.insert(
-            idx,
-            Character {
-                id: Id::gen(),
-                value,
-            },
-        )
-    }
-
     pub fn len(&self) -> usize {
         self.contents.len()
     }

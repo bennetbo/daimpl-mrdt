@@ -954,6 +954,14 @@ impl DeserializeCx<'_> {
 }
 
 // Some debugging tools, which can be helpful for benchmarks
+
+pub struct TableCounts {
+    pub commits: u64,
+    pub objects: u64,
+    pub refs: u64,
+    pub replicas: u64,
+}
+
 impl QuarkStore {
     pub async fn dump(&self) -> Result<()> {
         if !log_enabled!(log::Level::Debug) {
@@ -1142,12 +1150,8 @@ impl QuarkStore {
         Ok(())
     }
 
-    pub async fn dump_table_counts(&self) -> Result<()> {
-        if !log_enabled!(log::Level::Debug) {
-            return Ok(());
-        }
-
-        match self {
+    pub async fn table_counts(&self) -> Result<TableCounts> {
+        let table_counts = match self {
             QuarkStore::Scylla(session) => {
                 async fn get_table_count(session: &ScyllaSession, table_name: &str) -> Result<i64> {
                     session
@@ -1164,17 +1168,16 @@ impl QuarkStore {
                         .with_context(|| "Invalid value")
                 }
 
-                let commit_count = get_table_count(session, "commit").await?;
-                let object_count = get_table_count(session, "object").await?;
-                let ref_count = get_table_count(session, "ref").await?;
-                let replica_count = get_table_count(session, "replica").await?;
-                log::debug!(
-                    "Current amount of entities, commits: {}, objects: {}, refs: {}, replicas: {}",
-                    commit_count,
-                    object_count,
-                    ref_count,
-                    replica_count
-                );
+                let commits = get_table_count(session, "commit").await? as u64;
+                let objects = get_table_count(session, "object").await? as u64;
+                let refs = get_table_count(session, "ref").await? as u64;
+                let replicas = get_table_count(session, "replica").await? as u64;
+                TableCounts {
+                    commits,
+                    objects,
+                    refs,
+                    replicas,
+                }
             }
             #[cfg(test)]
             QuarkStore::Fake {
@@ -1182,16 +1185,30 @@ impl QuarkStore {
                 objects,
                 refs,
                 replicas,
-            } => {
-                log::debug!(
-                    "commit: {}, object: {}, ref: {}, replica: {}",
-                    commits.borrow().len(),
-                    objects.borrow().len(),
-                    refs.borrow().len(),
-                    replicas.borrow().len()
-                );
-            }
+            } => TableCounts {
+                commits: commits.borrow().len() as u64,
+                objects: objects.borrow().len() as u64,
+                refs: refs.borrow().len() as u64,
+                replicas: replicas.borrow().len() as u64,
+            },
+        };
+
+        Ok(table_counts)
+    }
+
+    pub async fn dump_table_counts(&self) -> Result<()> {
+        if !log_enabled!(log::Level::Debug) {
+            return Ok(());
         }
+
+        let table_counts = self.table_counts().await?;
+        log::debug!(
+            "Current amount of entities, commits: {}, objects: {}, refs: {}, replicas: {}",
+            table_counts.commits,
+            table_counts.objects,
+            table_counts.refs,
+            table_counts.replicas
+        );
         Ok(())
     }
 
