@@ -79,7 +79,7 @@ fn document_insert_random_chars(document: &mut Document, insertion_count: usize)
 fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("document_merge");
 
-    let sizes: &[(usize, usize)] = &[(100, 10), (1000, 100), (10000, 1000)];
+    let sizes: &[(usize, usize)] = &[(100, 10), (1000, 100), (10000, 1000), (100000, 10000)];
 
     for (len, insertion_count) in sizes {
         let lca = document_with_random_chars(*len);
