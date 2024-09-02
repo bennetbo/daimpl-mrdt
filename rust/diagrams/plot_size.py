@@ -20,7 +20,7 @@ for (filename, name), color in zip(variants, colors):
 
 plt.xlabel('Document Length')
 plt.ylabel('Amount of ref nodes')
-plt.title('Amount of ref nodes when appending vs prepending characters to a document')
+plt.title('Amount of ref nodes when appending characters near the end vs prepending characters near the beginning of a document')
 plt.legend()
 plt.grid(True)
 plt.show()

@@ -3,7 +3,8 @@ use musli::{Decode, Encode};
 use std::fmt::Display;
 
 const CYCLES: usize = 25;
-const CHAR_INSERTION_COUNT_PER_CYCLE: usize = 10;
+const CHAR_INSERTION_COUNT_PER_CYCLE: usize = 100;
+const INSERTION_POSITION_PERCENTAGE: usize = 25;
 
 #[derive(Clone, Decode, Encode, Hash, Default, PartialEq, Eq, Debug)]
 struct Document {
@@ -111,11 +112,15 @@ async fn main() -> Result<()> {
         let mut document = replica.latest_object::<Document>().await?.unwrap();
         for _ in 0..CYCLES {
             for _ in 0..CHAR_INSERTION_COUNT_PER_CYCLE {
-                if insert_at_start {
-                    document.insert(0, 'a');
+                let doc_len = document.len();
+                let insert_pos = if insert_at_start {
+                    // Insert in the first INSERTION_POSITION_PERCENTAGE%
+                    rand::random::<usize>() % (doc_len * INSERTION_POSITION_PERCENTAGE / 100 + 1)
                 } else {
-                    document.append('a');
-                }
+                    // Insert in the last INSERTION_POSITION_PERCENTAGE%
+                    doc_len - (rand::random::<usize>() % (doc_len * INSERTION_POSITION_PERCENTAGE / 100 + 1))
+                };
+                document.insert(insert_pos, 'a');
             }
             replica.commit_object(&document).await?;
             let table_counts = replica.store().table_counts().await?;
