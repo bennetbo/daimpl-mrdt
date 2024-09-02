@@ -175,7 +175,7 @@ async fn main() -> Result<()> {
 
             while !STOP.load(Ordering::Relaxed) {
                 for replica_id in replica_ids_copy.iter() {
-                    let _ = tx.try_send(replica_id.clone());
+                    let _ = tx.try_send(*replica_id);
                     delay.tick().await;
                 }
             }
@@ -215,7 +215,7 @@ async fn main() -> Result<()> {
         if let Some(merged_document) = merged_document {
             println!("Merge occurred in background, merging with local version...");
             //We need to merge again, because there occured a merge while we were inserting a new character
-            let lca_version = VectorClock::lca(&replica.latest_version(), &document_version);
+            let lca_version = VectorClock::lca(replica.latest_version(), &document_version);
             let lca_commit = replica
                 .store()
                 .resolve_commit_for_version(lca_version)
@@ -255,20 +255,20 @@ async fn main() -> Result<()> {
     println!("Merging with other replicas...");
     for replica_id in replica_ids.iter() {
         replica
-            .merge_with::<Document>(replica_id.clone())
+            .merge_with::<Document>(*replica_id)
             .await
             .unwrap();
     }
     let document: Document = replica.latest_object().await.unwrap().unwrap();
 
     std::fs::write(
-        format!("data/document_latency_{}.txt", replica_id.to_string()),
+        format!("data/document_latency_{}.txt", replica_id),
         document.to_string(),
     )
     .unwrap();
 
     std::fs::write(
-        format!("data/latencies_{}.txt", replica_id.to_string()),
+        format!("data/latencies_{}.txt", replica_id),
         latencies
             .iter()
             .map(|&(len, ms)| format!("{} {}", len, ms))

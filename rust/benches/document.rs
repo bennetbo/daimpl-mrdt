@@ -56,7 +56,7 @@ impl Mergeable for Document {
 }
 
 fn document_merge(lca: &Document, left: &Document, right: &Document) -> Document {
-    Document::merge(&lca, &left, &right)
+    Document::merge(lca, left, right)
 }
 
 fn document_with_random_chars(document_length: usize) -> Document {

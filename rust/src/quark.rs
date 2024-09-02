@@ -243,11 +243,10 @@ impl VersionedStore for QuarkStore {
             } => {
                 let commit_id = Id::gen();
                 let mut replicas = replicas.borrow_mut();
-                let prev_commit_id = replicas
+                let prev_commit_id = *replicas
                     .get(&replica_id)
-                    .with_context(|| "No previous commit available")?
-                    .clone();
-                replicas.insert(replica_id, commit_id.clone());
+                    .with_context(|| "No previous commit available")?;
+                replicas.insert(replica_id, commit_id);
 
                 let mut commits = commits.borrow_mut();
                 let commit = Commit {

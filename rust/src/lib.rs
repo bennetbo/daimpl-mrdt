@@ -130,7 +130,6 @@ mod tests {
     #[test]
     fn test_ids_are_unique() {
         let entries = (0..1000)
-            .into_iter()
             .map(|_| Id::gen())
             .collect::<HashSet<_>>();
 

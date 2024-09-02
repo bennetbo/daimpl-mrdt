@@ -94,17 +94,17 @@ fn merge_set(iterations: u64) -> std::collections::HashSet<u64> {
         let mut values = std::collections::HashSet::default();
         for value in lca.iter() {
             if left.contains(value) && right.contains(value) {
-                values.insert(value.clone());
+                values.insert(*value);
             }
         }
         for value in left.iter() {
             if !lca.contains(value) {
-                values.insert(value.clone());
+                values.insert(*value);
             }
         }
         for value in right.iter() {
             if !lca.contains(value) {
-                values.insert(value.clone());
+                values.insert(*value);
             }
         }
         lca = values;
@@ -125,17 +125,17 @@ fn merge_set_im(iterations: u64) -> im::HashSet<u64> {
         let mut values = im::HashSet::default();
         for value in lca.iter() {
             if left.contains(value) && right.contains(value) {
-                values.insert(value.clone());
+                values.insert(*value);
             }
         }
         for value in left.iter() {
             if !lca.contains(value) {
-                values.insert(value.clone());
+                values.insert(*value);
             }
         }
         for value in right.iter() {
             if !lca.contains(value) {
-                values.insert(value.clone());
+                values.insert(*value);
             }
         }
         lca = values;
@@ -156,17 +156,17 @@ fn merge_set_fx(iterations: u64) -> fxhash::FxHashSet<u64> {
         let mut values = fxhash::FxHashSet::default();
         for value in lca.iter() {
             if left.contains(value) && right.contains(value) {
-                values.insert(value.clone());
+                values.insert(*value);
             }
         }
         for value in left.iter() {
             if !lca.contains(value) {
-                values.insert(value.clone());
+                values.insert(*value);
             }
         }
         for value in right.iter() {
             if !lca.contains(value) {
-                values.insert(value.clone());
+                values.insert(*value);
             }
         }
         lca = values;

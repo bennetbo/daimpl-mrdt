@@ -15,20 +15,20 @@ impl<T: MrdtItem + Ord> Mergeable for Vec<T> {
             return vec![item];
         }
 
-        let max_idx = merged_ob.iter().map(|(_, idx)| *idx).max().unwrap_or(0);
+        let max_idx = merged_ob.values().copied().max().unwrap_or(0);
         let mut items: Vec<Option<T>> = vec![None; max_idx + 1];
         for (value, idx) in merged_ob {
             items[idx] = Some(value.clone());
         }
-        items.into_iter().filter_map(|item| item).collect()
+        items.into_iter().flatten().collect()
     }
 }
 
-fn mem<'a, T: MrdtItem>(items: &'a [T]) -> HashSet<&'a T> {
+fn mem<T: MrdtItem>(items: &[T]) -> HashSet<&T> {
     items.iter().collect()
 }
 
-fn ob<'a, T: MrdtItem>(items: &'a [T]) -> HashSet<(&'a T, &'a T)> {
+fn ob<T: MrdtItem>(items: &[T]) -> HashSet<(&T, &T)> {
     let mut result = HashSet::default();
     let mut iter = items.iter();
     if let Some(mut prev) = iter.next() {
