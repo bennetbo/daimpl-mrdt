@@ -16,6 +16,7 @@ pub use vector_clock::*;
 pub type HashSet<T> = fxhash::FxHashSet<T>;
 pub type HashMap<K, V> = fxhash::FxHashMap<K, V>;
 
+/// A trait that defines how to perform a three-way merge of a data structure.
 pub trait Mergeable {
     fn merge(lca: &Self, left: &Self, right: &Self) -> Self;
 }
@@ -129,9 +130,7 @@ mod tests {
 
     #[test]
     fn test_ids_are_unique() {
-        let entries = (0..1000)
-            .map(|_| Id::gen())
-            .collect::<HashSet<_>>();
+        let entries = (0..1000).map(|_| Id::gen()).collect::<HashSet<_>>();
 
         assert!(entries.len() == 1000);
     }
